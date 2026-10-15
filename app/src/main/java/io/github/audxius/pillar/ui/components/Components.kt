@@ -105,9 +105,12 @@ import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.styledSurface
 import io.github.audxius.pillar.ui.theme.primaryActionFinish
+import io.github.audxius.pillar.ui.theme.primaryActionOuter
 import io.github.audxius.pillar.ui.theme.StyleBackdrop
 import io.github.audxius.pillar.ui.theme.rememberFeedback
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 val LocalSharedScope = compositionLocalOf<SharedTransitionScope?> { null }
@@ -277,6 +280,7 @@ fun MultiImage(
     sources: List<String>,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
     /** Show the whole image over a blurred, darkened copy of itself instead of cropping. */
     fit: Boolean = false,
     /** In fit mode, inset the image so it sits like a case in a frame. */
@@ -294,13 +298,14 @@ fun MultiImage(
             val src = sources[index]
             var bitmapForColor by remember(src) { mutableStateOf<Bitmap?>(null) }
             if (fit && loaded) {
+                // A tiny decode stretched to fill looks soft and costs almost nothing, unlike a live blur
+                // on every tile.
                 AsyncImage(
-                    model = src,
+                    model = remember(src) { ImageRequest.Builder(context).data(src).size(24).build() },
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize()
-                        .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(18.dp) else Modifier)
-                        .graphicsLayer { alpha = 0.85f },
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
+                    modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0.9f },
                 )
                 Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.35f)))
             }
@@ -308,6 +313,7 @@ fun MultiImage(
                 model = ImageRequest.Builder(context).data(src).apply { if (onColor != null) allowHardware(false) }.build(),
                 contentDescription = null,
                 contentScale = if (fit) ContentScale.Fit else contentScale,
+                alignment = alignment,
                 modifier = Modifier.matchParentSize().then(if (fit && fitInset > 0.dp) Modifier.padding(fitInset) else Modifier),
                 onSuccess = { state ->
                     loaded = true
@@ -397,9 +403,8 @@ fun GameCover(
     val user = LocalUserData.current
     val sources = rememberCoverSources(game)
     val title = gameTitle(game)
-    val aspects by graph.artwork.aspects.collectAsStateWithLifecycle()
     val natural = ratio == null && settings.coverShape == CoverShape.NATURAL
-    val known = aspects[game.id]
+    val known = rememberAspect(game)
     // Natural shape: every cover keeps its real proportions (square GBA boxes, wide SNES boxes...).
     val target = ratio ?: if (natural) (known ?: graph.catalog.boxRatio(game.system)).coerceIn(0.5f, 1.8f) else settings.coverShape.ratio()
     val r by animateFloatAsState(target, tween(250), label = "coverRatio")
@@ -460,6 +465,8 @@ fun GameTile(
             Text(
                 gameTitle(game),
                 style = MaterialTheme.typography.labelLarge,
+                // Always two lines tall so rows of tiles line up whatever the title length.
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 2.dp),
@@ -643,10 +650,22 @@ fun successColor(): Color = if (LocalIsDark.current) Color(0xFF4ADE80) else Colo
 @Composable
 fun rememberArt(game: Game): io.github.audxius.pillar.data.ArtSet? {
     val graph = LocalGraph.current
-    val all by graph.artwork.art.collectAsStateWithLifecycle()
     val settings = LocalSettings.current
+    // Watch only this game's entry, so one finished lookup doesn't redraw every tile on screen.
+    val flow = remember(game.id) {
+        graph.artwork.art.map { it[game.id] }.distinctUntilChanged()
+    }
+    val art by flow.collectAsStateWithLifecycle(graph.artwork.art.value[game.id])
     LaunchedEffect(game.id, settings.sgdbKey, settings.onlineCovers) { graph.artwork.ensure(game) }
-    return all[game.id]
+    return art
+}
+
+@Composable
+fun rememberAspect(game: Game): Float? {
+    val graph = LocalGraph.current
+    val flow = remember(game.id) { graph.artwork.aspects.map { it[game.id] }.distinctUntilChanged() }
+    val aspect by flow.collectAsStateWithLifecycle(graph.artwork.aspects.value[game.id])
+    return aspect
 }
 
 @Composable
@@ -728,6 +747,7 @@ fun PrimaryAction(
     val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier
+            .primaryActionOuter(shape)
             .shadow(14.dp, shape, ambientColor = primary, spotColor = primary)
             .clip(shape)
             .background(brush)

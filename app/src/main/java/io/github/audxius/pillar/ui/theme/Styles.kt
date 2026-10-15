@@ -1,6 +1,7 @@
 package io.github.audxius.pillar.ui.theme
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -9,24 +10,27 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 import io.github.audxius.pillar.data.AppFont
@@ -53,22 +57,32 @@ data class StyleSpec(
 
 val StyleSpecs = listOf(
     StyleSpec(UiStyle.GLASS, "Glassmorphism", "Frosted panels floating over soft color", "aurora", ThemeMode.DARK, AppFont.OUTFIT, 24),
-    StyleSpec(UiStyle.AERO, "Frutiger Aero", "Glossy aqua, sky, bubbles and greenery", "ocean", ThemeMode.LIGHT, AppFont.NUNITO, 18),
-    StyleSpec(UiStyle.Y2K, "Y2K", "Chrome, holographic shine and sparkles", "sakura", ThemeMode.DARK, AppFont.SPACE_GROTESK, 14),
+    StyleSpec(UiStyle.AERO, "Frutiger Aero", "Vista-era glass, sky, aurora light and bubbles", "aero", ThemeMode.LIGHT, AppFont.NUNITO, 14),
+    StyleSpec(UiStyle.Y2K, "Y2K", "Dreamcast, PS2 and Jet Set Radio era", "y2k", ThemeMode.DARK, AppFont.EXO, 12),
 )
 
 fun specFor(style: UiStyle) = StyleSpecs.first { it.style == style }
 
 val LocalStyle = staticCompositionLocalOf { UiStyle.GLASS }
 
-private val Y2kHolo = listOf(Color(0xFFFF6AD5), Color(0xFFC774E8), Color(0xFFAD8CFF), Color(0xFF8795E8), Color(0xFF94D0FF), Color(0xFF7CFFCB), Color(0xFFFF6AD5))
-private val Chrome = listOf(Color(0xFFFFFFFF), Color(0xFFDCE3EE), Color(0xFF9AA6BC), Color(0xFFE9EEF7), Color(0xFFB6C0D3))
+// Y2K console-era colors.
+private val PsBlue = Color(0xFF2E6BFF)
+private val JsrLime = Color(0xFFB4FF39)
+private val DcOrange = Color(0xFFFF7A00)
+private val Ink = Color(0xFF07080F)
+
+/** Draws a hard, offset cartoon shadow behind a shape (Jet Set Radio sticker look). */
+private fun Modifier.hardShadow(shape: Shape, dx: Float = 4f, dy: Float = 4f, color: Color = Ink) = drawBehind {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    translate(dx.dp.toPx(), dy.dp.toPx()) { drawOutline(outline, color) }
+}
 
 /** Panel surface for the current style: fill, rim and highlight. */
 @Composable
 fun Modifier.styledSurface(shape: Shape, strong: Boolean = false): Modifier {
     val style = LocalStyle.current
     val dark = LocalIsDark.current
+    val primary = androidx.compose.material3.MaterialTheme.colorScheme.primary
     return when (style) {
         UiStyle.GLASS -> this
             .clip(shape)
@@ -77,29 +91,33 @@ fun Modifier.styledSurface(shape: Shape, strong: Boolean = false): Modifier {
                 else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0.55f)))
             )
             .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.35f else 0.9f), Color.White.copy(alpha = if (dark) 0.06f else 0.4f))), shape)
+
         UiStyle.AERO -> this
-            .shadow(if (strong) 10.dp else 6.dp, shape, ambientColor = Color(0xFF2A8FD6), spotColor = Color(0xFF2A8FD6))
+            .shadow(if (strong) 12.dp else 8.dp, shape, ambientColor = Color(0xFF0A6CD6), spotColor = Color(0xFF0A6CD6))
             .clip(shape)
             .background(
-                if (dark) Brush.verticalGradient(listOf(Color(0xFF2B4D6E).copy(alpha = 0.85f), Color(0xFF13283D).copy(alpha = 0.85f)))
-                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.92f), Color(0xFFEAF6FF).copy(alpha = 0.85f)))
+                if (dark) Brush.verticalGradient(listOf(Color(0xFF2A5A86).copy(alpha = 0.72f), Color(0xFF0E2A47).copy(alpha = 0.78f)))
+                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.62f), Color(0xFFDDF2FF).copy(alpha = 0.48f)))
             )
             .drawWithContent {
-                drawContent()
-                // The glossy top half that defines the Aero look.
+                // Vista glass: a bright reflection band across the top, capped so tall panels don't get a huge sheen.
+                val band = minOf(size.height * 0.45f, 30.dp.toPx())
                 drawRect(
-                    Brush.verticalGradient(0f to Color.White.copy(alpha = if (dark) 0.18f else 0.55f), 0.45f to Color.White.copy(alpha = 0f)),
-                    size = Size(size.width, size.height * 0.5f),
+                    Brush.verticalGradient(0f to Color.White.copy(alpha = if (dark) 0.22f else 0.6f), 1f to Color.White.copy(alpha = 0f), endY = band),
+                    size = Size(size.width, band),
                 )
+                drawContent()
             }
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White, Color(0xFF7CC8FF).copy(alpha = 0.8f))), shape)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White, Color.White.copy(alpha = 0.55f), Color(0xFF7CC6F5))), shape)
+
         UiStyle.Y2K -> this
+            .hardShadow(shape)
             .clip(shape)
             .background(
-                if (dark) Brush.verticalGradient(listOf(Color(0xFF1A1030).copy(alpha = 0.94f), Color(0xFF0B0716).copy(alpha = 0.96f)))
-                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.85f), Color(0xFFF6EEFF).copy(alpha = 0.85f)))
+                if (dark) Brush.verticalGradient(listOf(Color(0xFF13214A), Color(0xFF0A1330)))
+                else Brush.verticalGradient(listOf(Color.White, Color(0xFFEAF0FF)))
             )
-            .border(if (strong) 2.dp else 1.5.dp, Brush.linearGradient(Y2kHolo), shape)
+            .border(2.dp, if (strong) primary else if (dark) Color(0xFFC8DCFF).copy(alpha = 0.55f) else Ink, shape)
     }
 }
 
@@ -111,8 +129,8 @@ fun primaryActionColors(): Pair<Brush, Color> {
     val primary = androidx.compose.material3.MaterialTheme.colorScheme.primary
     return when (style) {
         UiStyle.GLASS -> Brush.horizontalGradient(listOf(primary, lerp(primary, p.tertiary, 0.6f))) to primary.onColor()
-        UiStyle.AERO -> Brush.verticalGradient(listOf(Color(0xFF8BEBFF), Color(0xFF29B6F6), Color(0xFF0277BD))) to Color.White
-        UiStyle.Y2K -> Brush.linearGradient(Chrome) to Color(0xFF241634)
+        UiStyle.AERO -> Brush.verticalGradient(0f to Color(0xFFB8F2FF), 0.45f to Color(0xFF39C3F5), 0.55f to Color(0xFF0B86D6), 1f to Color(0xFF29B4F0)) to Color.White
+        UiStyle.Y2K -> Brush.linearGradient(listOf(Color(0xFFFFC400), DcOrange)) to Ink
     }
 }
 
@@ -124,15 +142,20 @@ fun Modifier.primaryActionFinish(shape: Shape): Modifier = when (LocalStyle.curr
         .drawWithContent {
             drawContent()
             drawRoundRect(
-                Brush.verticalGradient(0f to Color.White.copy(alpha = 0.75f), 1f to Color.White.copy(alpha = 0.05f)),
-                topLeft = Offset(size.width * 0.04f, size.height * 0.06f),
-                size = Size(size.width * 0.92f, size.height * 0.46f),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2),
+                Brush.verticalGradient(0f to Color.White.copy(alpha = 0.85f), 1f to Color.White.copy(alpha = 0.08f)),
+                topLeft = Offset(size.width * 0.03f, size.height * 0.04f),
+                size = Size(size.width * 0.94f, size.height * 0.36f),
+                cornerRadius = CornerRadius(size.height / 2),
             )
         }
-        .border(1.dp, Color(0xFF01579B).copy(alpha = 0.6f), shape)
-    UiStyle.Y2K -> this.border(1.5.dp, Brush.linearGradient(Y2kHolo), shape)
+        .border(1.dp, Color(0xFF05578F), shape)
+    UiStyle.Y2K -> this.border(2.5.dp, Ink, shape)
 }
+
+/** Wraps the primary action for styles that need something outside its bounds (Y2K's hard shadow). */
+@Composable
+fun Modifier.primaryActionOuter(shape: Shape): Modifier =
+    if (LocalStyle.current == UiStyle.Y2K) this.hardShadow(shape, 5f, 5f) else this
 
 /** Chip/pill colors: (background, content, border). */
 @Composable
@@ -142,11 +165,12 @@ fun chipColors(selected: Boolean): Triple<Brush, Color, Brush> {
     return when (style) {
         UiStyle.GLASS -> if (selected) Triple(SolidBrush(Color.White.copy(alpha = if (dark) 0.92f else 1f)), Color(0xFF15131C), SolidBrush(Color.White))
         else Triple(SolidBrush(Color.White.copy(alpha = if (dark) 0.08f else 0.5f)), if (dark) Color.White else Color(0xFF15131C), SolidBrush(Color.White.copy(alpha = if (dark) 0.2f else 0.8f)))
-        UiStyle.AERO -> if (selected) Triple(Brush.verticalGradient(listOf(Color(0xFF8BEBFF), Color(0xFF1E9BE0))), Color.White, SolidBrush(Color(0xFF0277BD)))
-        else Triple(Brush.verticalGradient(listOf(Color.White, Color(0xFFE3F3FF))), Color(0xFF0B3C5D), SolidBrush(Color(0xFF9AD4FF)))
-        UiStyle.Y2K -> if (selected) Triple(Brush.linearGradient(Chrome), Color(0xFF241634), Brush.linearGradient(Y2kHolo))
-        else Triple(SolidBrush(Color.Black.copy(alpha = 0.35f)), Color.White, Brush.linearGradient(Y2kHolo.map { it.copy(alpha = 0.7f) }))
-    }.let { if (!dark && style == UiStyle.Y2K && !selected) Triple(SolidBrush(Color.White.copy(alpha = 0.7f)), Color(0xFF241634), it.third) else it }
+        UiStyle.AERO -> if (selected) Triple(Brush.verticalGradient(0f to Color(0xFFB8F2FF), 0.5f to Color(0xFF39C3F5), 0.51f to Color(0xFF0B86D6), 1f to Color(0xFF29B4F0)), Color.White, SolidBrush(Color(0xFF05578F)))
+        else Triple(Brush.verticalGradient(0f to Color.White, 0.5f to Color(0xFFF4FAFF), 0.51f to Color(0xFFE2F1FC), 1f to Color(0xFFEFF8FF)), Color(0xFF0D3B66), SolidBrush(Color(0xFF8CC7EE)))
+        UiStyle.Y2K -> if (selected) Triple(SolidBrush(JsrLime), Ink, SolidBrush(Ink))
+        else if (dark) Triple(SolidBrush(Color(0xFF13214A)), Color.White, SolidBrush(Color(0xFFC8DCFF).copy(alpha = 0.5f)))
+        else Triple(SolidBrush(Color.White), Ink, SolidBrush(Ink))
+    }
 }
 
 @Suppress("FunctionName")
@@ -158,15 +182,19 @@ fun StyleBackdrop(primary: Color, secondary: Color, tertiary: Color, animate: Bo
     when (LocalStyle.current) {
         UiStyle.GLASS -> GlassMesh(primary, secondary, tertiary, animate)
         UiStyle.AERO -> AeroSky(animate)
-        UiStyle.Y2K -> Y2kHoloSpace(primary, animate)
+        UiStyle.Y2K -> ConsoleEra(animate)
     }
 }
 
 @Composable
-private fun drift(animate: Boolean, ms: Int, label: String): Float {
+private fun drift(animate: Boolean, ms: Int, label: String, linear: Boolean = false): Float {
     if (!animate) return 0.5f
     val t = rememberInfiniteTransition(label = label)
-    val v by t.animateFloat(0f, 1f, infiniteRepeatable(tween(ms, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = label)
+    val v by t.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(ms, easing = if (linear) LinearEasing else FastOutSlowInEasing), if (linear) RepeatMode.Restart else RepeatMode.Reverse),
+        label = label,
+    )
     return v
 }
 
@@ -190,91 +218,126 @@ private fun GlassMesh(a: Color, b: Color, c: Color, animate: Boolean) {
     }
 }
 
+// ---- Frutiger Aero ---------------------------------------------------------------------------
+
 @Composable
 private fun AeroSky(animate: Boolean) {
     val dark = LocalIsDark.current
-    val p = drift(animate, 30000, "aero")
+    val p = drift(animate, 26000, "aero")
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height
-        if (dark) {
-            drawRect(Brush.verticalGradient(listOf(Color(0xFF06284A), Color(0xFF0B4F7A), Color(0xFF0E6E5A))))
-        } else {
-            drawRect(Brush.verticalGradient(0f to Color(0xFF39B7FF), 0.45f to Color(0xFFBFE9FF), 0.72f to Color(0xFFF2FBFF), 1f to Color(0xFFB8E986)))
-        }
-        // Rolling green hills at the bottom.
-        fun hill(yBase: Float, amp: Float, color: Brush, phase: Float) {
-            val path = Path().apply {
-                moveTo(0f, h)
-                lineTo(0f, yBase)
-                var x = 0f
-                while (x <= w) {
-                    lineTo(x, yBase - amp * sin((x / w) * PI.toFloat() * 1.6f + phase).toFloat())
-                    x += w / 40f
-                }
-                lineTo(w, h); close()
+        // Deep blue sky fading to a bright horizon.
+        drawRect(
+            if (dark) Brush.verticalGradient(listOf(Color(0xFF021B3D), Color(0xFF07407A), Color(0xFF0B6A8C)))
+            else Brush.verticalGradient(0f to Color(0xFF0A6CD6), 0.38f to Color(0xFF3AA8F2), 0.7f to Color(0xFFA9E1FF), 1f to Color(0xFFEAF9FF))
+        )
+        // Sweeping aurora light ribbons (Windows Vista wallpaper).
+        fun ribbon(y0: Float, amp: Float, thickness: Float, color: Color, phase: Float) {
+            val path = Path()
+            val steps = 48
+            for (i in 0..steps) {
+                val x = w * i / steps
+                val y = y0 + amp * sin((i.toFloat() / steps) * PI.toFloat() * 1.3f + phase)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
-            drawPath(path, color)
+            for (i in steps downTo 0) {
+                val x = w * i / steps
+                val y = y0 + thickness + amp * 0.8f * sin((i.toFloat() / steps) * PI.toFloat() * 1.3f + phase + 0.35f)
+                path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(path, Brush.verticalGradient(listOf(color.copy(alpha = 0f), color, color.copy(alpha = 0f)), startY = y0 - amp, endY = y0 + thickness + amp))
         }
-        hill(h * 0.86f, h * 0.04f, Brush.verticalGradient(listOf(Color(0xFF9BE15D).copy(alpha = if (dark) 0.35f else 0.9f), Color(0xFF3FA34D).copy(alpha = if (dark) 0.35f else 0.9f))), 0.6f)
-        hill(h * 0.92f, h * 0.03f, Brush.verticalGradient(listOf(Color(0xFF6CC24A).copy(alpha = if (dark) 0.4f else 1f), Color(0xFF237A3B).copy(alpha = if (dark) 0.4f else 1f))), 2.2f)
-        // Sun glow and light rays.
-        val sun = Offset(w * 0.82f, h * 0.08f)
-        drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0f)), center = sun, radius = w * 0.45f), radius = w * 0.45f, center = sun)
-        // Floating soap bubbles.
-        val bubbles = listOf(0.12f to 0.32f, 0.28f to 0.6f, 0.7f to 0.38f, 0.86f to 0.68f, 0.5f to 0.2f, 0.4f to 0.78f)
-        bubbles.forEachIndexed { i, (bx, by) ->
-            val rr = w * (0.05f + 0.025f * (i % 3))
-            val c = Offset(w * bx, h * by - h * 0.03f * sin((p + i * 0.3f) * 2 * PI.toFloat()))
-            drawBubble(c, rr)
+        ribbon(h * 0.30f, h * 0.06f, h * 0.10f, Color.White.copy(alpha = if (dark) 0.18f else 0.45f), 0.4f + p * 0.6f)
+        ribbon(h * 0.40f, h * 0.05f, h * 0.06f, Color(0xFF9DFFB0).copy(alpha = if (dark) 0.22f else 0.4f), 1.6f + p * 0.5f)
+        ribbon(h * 0.22f, h * 0.04f, h * 0.05f, Color(0xFFB9F0FF).copy(alpha = if (dark) 0.15f else 0.35f), 2.6f - p * 0.4f)
+        // Sun and lens flare.
+        val sun = Offset(w * 0.18f, h * 0.07f)
+        drawCircle(Brush.radialGradient(0f to Color.White.copy(alpha = 0.9f), 0.25f to Color.White.copy(alpha = 0.35f), 1f to Color.White.copy(alpha = 0f), center = sun, radius = w * 0.3f), radius = w * 0.3f, center = sun)
+        listOf(0.25f to 0.05f, 0.42f to 0.03f, 0.6f to 0.07f).forEach { (t, r) ->
+            val c = Offset(sun.x + (w * 0.9f - sun.x) * t, sun.y + (h * 0.5f - sun.y) * t)
+            drawCircle(Color.White.copy(alpha = 0.12f), radius = w * r, center = c)
+        }
+        // Glossy green hill with a bright rim.
+        val hill = Path().apply {
+            moveTo(0f, h); lineTo(0f, h * 0.84f)
+            cubicTo(w * 0.3f, h * 0.76f, w * 0.7f, h * 0.78f, w, h * 0.86f)
+            lineTo(w, h); close()
+        }
+        drawPath(hill, Brush.verticalGradient(listOf(Color(0xFF9BE15D), Color(0xFF3FA535), Color(0xFF1E6B2A)), startY = h * 0.76f, endY = h))
+        drawPath(hill, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0f)), startY = h * 0.76f, endY = h * 0.83f))
+        // A few crisp soap bubbles.
+        listOf(Triple(0.82f, 0.30f, 0.07f), Triple(0.12f, 0.52f, 0.045f), Triple(0.68f, 0.62f, 0.035f), Triple(0.9f, 0.7f, 0.025f)).forEachIndexed { i, (bx, by, br) ->
+            val r = w * br
+            val c = Offset(w * bx, h * by - h * 0.02f * sin((p + i * 0.25f) * 2 * PI.toFloat()))
+            drawBubble(c, r)
         }
     }
 }
 
 private fun DrawScope.drawBubble(c: Offset, r: Float) {
-    drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0f), Color(0xFFBFF3FF).copy(alpha = 0.18f), Color.White.copy(alpha = 0.55f)), center = c, radius = r), radius = r, center = c)
-    drawCircle(Color.White.copy(alpha = 0.8f), radius = r * 0.22f, center = Offset(c.x - r * 0.4f, c.y - r * 0.4f))
+    drawCircle(Brush.radialGradient(0.6f to Color.White.copy(alpha = 0.02f), 0.92f to Color(0xFFCFF6FF).copy(alpha = 0.35f), 1f to Color.White.copy(alpha = 0.8f), center = c, radius = r), radius = r, center = c)
+    drawCircle(Color.White.copy(alpha = 0.9f), radius = r * 0.18f, center = Offset(c.x - r * 0.42f, c.y - r * 0.42f))
+    drawArc(Color.White.copy(alpha = 0.6f), 200f, 70f, false, topLeft = Offset(c.x - r * 0.8f, c.y - r * 0.8f), size = Size(r * 1.6f, r * 1.6f), style = Stroke(r * 0.08f))
 }
+
+// ---- Y2K console era ---------------------------------------------------------------------------
 
 @Composable
-private fun Y2kHoloSpace(accent: Color, animate: Boolean) {
+private fun ConsoleEra(animate: Boolean) {
     val dark = LocalIsDark.current
-    val p = drift(animate, 16000, "y2k")
+    val p = drift(animate, 14000, "y2k", linear = true)
+    val pulse = drift(animate, 3200, "y2kPulse")
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height
-        drawRect(if (dark) Brush.verticalGradient(listOf(Color(0xFF07020F), Color(0xFF1A0B2E), Color(0xFF0A0418))) else Brush.verticalGradient(listOf(Color(0xFFFDF2FF), Color(0xFFEDE4FF), Color(0xFFE2F6FF))))
-        val k = if (dark) 1f else 0.7f
-        fun glow(color: Color, x: Float, y: Float, r: Float, s: Float) = drawCircle(
-            Brush.radialGradient(listOf(color.copy(alpha = s * k), color.copy(alpha = 0f)), center = Offset(x, y), radius = r), radius = r, center = Offset(x, y),
+        drawRect(
+            if (dark) Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF06173D), Color(0xFF020617)))
+            else Brush.verticalGradient(listOf(Color(0xFFEFF4FF), Color(0xFFD9E6FF), Color(0xFFF4F8FF)))
         )
-        glow(Color(0xFFFF6AD5), w * (0.1f + 0.4f * p), h * 0.15f, w * 0.9f, 0.45f)
-        glow(Color(0xFF7CFFCB), w * 0.95f, h * (0.4f + 0.2f * p), w * 0.7f, 0.28f)
-        glow(Color(0xFF94D0FF), w * 0.2f, h * 0.8f, w * 0.8f, 0.3f)
-        glow(accent, w * 0.6f, h * 0.6f, w * 0.6f, 0.2f)
-        // Retro perspective grid fading in at the bottom.
-        val horizon = h * 0.78f
-        val gridColor = (if (dark) Color(0xFFFF6AD5) else Color(0xFFB45CFF)).copy(alpha = 0.22f)
-        for (i in -10..10) {
-            drawLine(gridColor, Offset(w / 2 + i * w * 0.03f, horizon), Offset(w / 2 + i * w * 0.22f, h), strokeWidth = 1.5f)
+        // PS2 boot-screen light pillars rising from the floor.
+        val heights = listOf(0.30f, 0.52f, 0.22f, 0.64f, 0.38f, 0.48f, 0.26f, 0.58f, 0.34f)
+        heights.forEachIndexed { i, hf ->
+            val x = w * (0.06f + i * 0.11f)
+            val ph = h * hf * (0.85f + 0.15f * sin((pulse + i * 0.37f) * PI.toFloat()))
+            val bw = w * 0.035f
+            drawRect(
+                Brush.verticalGradient(listOf(PsBlue.copy(alpha = 0f), PsBlue.copy(alpha = if (dark) 0.55f else 0.35f), Color(0xFF9FD4FF).copy(alpha = if (dark) 0.75f else 0.5f)), startY = h - ph, endY = h),
+                topLeft = Offset(x - bw / 2, h - ph), size = Size(bw, ph),
+            )
+            drawRect(Color.White.copy(alpha = if (dark) 0.5f else 0.7f), topLeft = Offset(x - bw * 0.08f, h - ph), size = Size(bw * 0.16f, ph))
         }
-        var y = horizon; var step = h * 0.012f
-        while (y < h) { drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1.5f); y += step; step *= 1.35f }
-        // Four-point sparkles.
-        val stars = listOf(0.12f to 0.1f, 0.82f to 0.18f, 0.35f to 0.32f, 0.9f to 0.52f, 0.08f to 0.6f, 0.62f to 0.08f, 0.5f to 0.45f)
-        stars.forEachIndexed { i, (sx, sy) ->
-            val twinkle = 0.5f + 0.5f * sin((p * 2 + i * 0.7f) * PI.toFloat())
-            drawSparkle(Offset(w * sx, h * sy), w * (0.006f + 0.004f * (i % 3)) * (0.7f + 0.3f * twinkle), (if (dark) Color.White else Color(0xFFB45CFF)).copy(alpha = 0.25f + 0.35f * twinkle))
+        // Floating outlined cubes.
+        listOf(Triple(0.9f, 0.08f, 0.045f), Triple(0.9f, 0.5f, 0.035f), Triple(0.07f, 0.58f, 0.03f)).forEachIndexed { i, (cx, cy, cs) ->
+            val c = Offset(w * cx, h * cy + h * 0.015f * sin((p * 2 + i) * PI.toFloat()))
+            val s = w * cs
+            rotate(degrees = p * 360f * (if (i % 2 == 0) 1 else -1) + i * 20f, pivot = c) {
+                drawRect(Color(0xFF9FD4FF).copy(alpha = if (dark) 0.5f else 0.6f), topLeft = Offset(c.x - s, c.y - s), size = Size(s * 2, s * 2), style = Stroke(3f))
+                drawRect(Color(0xFF9FD4FF).copy(alpha = 0.12f), topLeft = Offset(c.x - s, c.y - s), size = Size(s * 2, s * 2))
+            }
         }
+        // Jet Set Radio halftone burst in the corner.
+        val origin = Offset(w * 0.98f, h * 0.02f)
+        val dot = w * 0.026f
+        var y = 0f
+        while (y < h * 0.3f) {
+            var x = w * 0.5f
+            while (x < w) {
+                val d = (Offset(x, y) - origin).getDistance() / (w * 0.6f)
+                if (d < 1f) drawCircle(DcOrange.copy(alpha = if (dark) 0.55f else 0.4f), radius = dot * 0.5f * (1f - d), center = Offset(x, y))
+                x += dot
+            }
+            y += dot
+        }
+        // Faint Dreamcast swirl.
+        val swirl = Path()
+        val sc = Offset(w * 0.12f, h * 0.9f)
+        for (i in 0..120) {
+            val t = i / 120f
+            val ang = t * 4.2f * PI.toFloat()
+            val r = w * 0.03f + t * w * 0.2f
+            val pt = Offset(sc.x + r * cos(ang), sc.y + r * sin(ang))
+            if (i == 0) swirl.moveTo(pt.x, pt.y) else swirl.lineTo(pt.x, pt.y)
+        }
+        drawPath(swirl, DcOrange.copy(alpha = if (dark) 0.35f else 0.45f), style = Stroke(w * 0.012f))
     }
-}
-
-private fun DrawScope.drawSparkle(c: Offset, r: Float, color: Color) {
-    val path = Path()
-    for (i in 0 until 8) {
-        val ang = i * PI / 4
-        val rad = if (i % 2 == 0) r * 2.4f else r * 0.35f
-        val x = c.x + (rad * cos(ang)).toFloat(); val yy = c.y + (rad * sin(ang)).toFloat()
-        if (i == 0) path.moveTo(x, yy) else path.lineTo(x, yy)
-    }
-    path.close()
-    drawPath(path, color)
 }

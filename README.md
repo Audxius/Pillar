@@ -15,6 +15,13 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/game.webp" width="23%" alt="Game page" />
   <img src="docs/saves.webp" width="23%" alt="Saves" />
 </p>
+<p align="center">
+  <img src="docs/style-aero-home.webp" width="23%" alt="Frutiger Aero style, home" />
+  <img src="docs/style-aero-game.webp" width="23%" alt="Frutiger Aero style, game page" />
+  <img src="docs/style-y2k-home.webp" width="23%" alt="Y2K style, home" />
+  <img src="docs/style-y2k-game.webp" width="23%" alt="Y2K style, game page" />
+</p>
+<p align="center"><sub>Glassmorphism (top), Frutiger Aero and Y2K (bottom)</sub></p>
 
 ## Install
 
@@ -28,11 +35,17 @@ Android 8.0 or newer.
 
 ## Features
 
-- **Built for portrait.** The selected game's art in its own frame, a snapping cover carousel and
-  shelves for Recent, Favorites and each system. Cover tiles stay uniform: art that doesn't match
-  the tile is shown whole in a frame instead of being cropped.
-- **Three looks.** Glassmorphism (default), Frutiger Aero and Y2K, each with its own backdrop,
-  panels, buttons and dock.
+- **Built for portrait.** A wide art strip for the selected game, its logo, and a snapping cover
+  carousel sized to fit above the dock. Tap a cover to open its page; Play is right there.
+  Cover tiles stay uniform: art that doesn't match the tile is shown whole in a frame instead of
+  being cropped.
+- **Game pages.** Cover, logo, the emulator it will use right above Play, save files, RomM info
+  and every achievement (still to unlock first). Favorite, cover, rename and hide live in the ⋮ menu.
+- **Library.** Search, a platform strip, sort and filters in one screen, with an evenly aligned
+  cover grid.
+- **Three looks.** Glassmorphism (default); Frutiger Aero (Vista-era sky, glossy glass and aqua
+  buttons); and Y2K (Dreamcast, PS2 and Jet Set Radio: light pillars, halftone, hard-shadow
+  panels, Exo 2 type). Each has its own backdrop, panels, buttons and dock.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -51,17 +64,17 @@ Android 8.0 or newer.
   deletes anything on the server and backs up any save before replacing it.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
   you, and downloads keep going in the background.
-- **RetroAchievements.** Profile, your games as expandable cards with unlocked and locked
-  achievements, and recent unlocks grouped by game.
+- **RetroAchievements.** Profile, your games as expandable cards with the achievements you still
+  need listed first, and recent unlocks grouped by game.
   Local games are matched by title; RomM games use RomM's match. You can also set a game ID by hand.
 - **Customize everything.**
-  - Theme: 8 palettes, any accent color, Material You, dark / AMOLED black / light.
-  - Fonts: Nunito, Outfit, Space Grotesk, a pixel font, or the system font, plus text size.
+  - Theme: 10 palettes, any accent color, Material You, dark / AMOLED black / light.
+  - Fonts: Nunito, Outfit, Space Grotesk, Exo 2, a pixel font, or the system font, plus text size.
   - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
     blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
-  - Home screen: 12 widgets (clock, continue playing, platforms, favorites, RetroAchievements,
-    RomM, random pick, quick apps, stats…) that you can toggle and reorder.
+  - Feed home layout: 11 widgets (clock, continue playing, platforms, favorites,
+    RetroAchievements, RomM, random pick, stats…) that you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.
   - Export and import all of it as a backup file.

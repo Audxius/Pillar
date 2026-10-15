@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -121,8 +123,11 @@ private val Tabs = listOf(
 val LocalNav = compositionLocalOf<NavHostController> { error("No nav") }
 val LocalSnackbar = compositionLocalOf { SnackbarHostState() }
 
-/** Space screens leave at the bottom so content can scroll above the floating bar. */
-val BottomBarSpace = 118.dp
+private val BottomBarHeight = 118.dp
+
+/** Space screens leave at the bottom so content can scroll above the floating bar and the system nav bar under it. */
+val BottomBarSpace: Dp
+    @Composable get() = BottomBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
 @Composable
 fun PillarRoot(graph: AppGraph) {
@@ -180,7 +185,7 @@ fun PillarRoot(graph: AppGraph) {
                 SnackbarHost(
                     snackbar,
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                        .padding(bottom = if (showBar) BottomBarSpace - 20.dp else 16.dp, start = 16.dp, end = 16.dp),
+                        .padding(bottom = if (showBar) BottomBarHeight - 20.dp else 16.dp, start = 16.dp, end = 16.dp),
                 )
             }
         }

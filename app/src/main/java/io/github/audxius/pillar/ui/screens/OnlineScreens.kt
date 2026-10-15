@@ -231,6 +231,12 @@ private fun RaGameCard(g: RaRecentGame, expanded: Boolean, onToggle: () -> Unit)
     val games by graph.allGames.collectAsStateWithLifecycle()
     val localGame = remember(games, user.raIds, g.gameId) { games.firstOrNull { user.raIds[it.id] == g.gameId } }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
+    // Loaded as soon as the card is shown, so expanding is instant and doesn't jump in size.
+    var progress by remember { mutableStateOf<RaGameProgress?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(g.gameId) {
+        runCatching { graph.ra.progress(g.gameId) }.onSuccess { progress = it }.onFailure { error = it.message }
+    }
     Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 0.dp) {
         Row(
             Modifier.fillMaxWidth().tappable(RoundedCornerShape(20.dp), onClick = onToggle).padding(12.dp),
@@ -253,18 +259,18 @@ private fun RaGameCard(g: RaRecentGame, expanded: Boolean, onToggle: () -> Unit)
             Spacer(Modifier.width(6.dp))
             Icon(Icons.Rounded.ExpandMore, if (expanded) "Collapse" else "Expand", Modifier.rotate(chevron))
         }
-        AnimatedVisibility(expanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        // Opens downward from the card header, so the top of the list shows first.
+        AnimatedVisibility(
+            expanded,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+        ) {
             Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 14.dp)) {
-                var progress by remember { mutableStateOf<RaGameProgress?>(null) }
-                var error by remember { mutableStateOf<String?>(null) }
-                LaunchedEffect(g.gameId) {
-                    runCatching { graph.ra.progress(g.gameId) }.onSuccess { progress = it }.onFailure { error = it.message }
-                }
                 val p = progress
                 when {
                     error != null -> Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     p == null -> Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) }
-                    else -> AchievementList(p, collapsedLocked = 6)
+                    else -> AchievementList(p)
                 }
                 if (localGame != null) {
                     TextButton(onClick = { nav.navigate(Routes.game(localGame.id, "ra")) }) { Text("Open in library") }
@@ -276,8 +282,7 @@ private fun RaGameCard(g: RaRecentGame, expanded: Boolean, onToggle: () -> Unit)
 
 /** Summary plus Unlocked and Locked sections, used on Trophies and on game pages. */
 @Composable
-fun AchievementList(p: RaGameProgress, collapsedLocked: Int = 8) {
-    var showAllLocked by remember(p.id) { mutableStateOf(false) }
+fun AchievementList(p: RaGameProgress) {
     if (p.achievements.isEmpty()) {
         Text("This game has no achievements yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
@@ -294,19 +299,14 @@ fun AchievementList(p: RaGameProgress, collapsedLocked: Int = 8) {
             Text("${p.points} / ${p.totalPoints} points", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+    // What's left to do comes first, then what you've already earned.
+    if (locked.isNotEmpty()) {
+        ListLabel("To unlock · ${locked.size}")
+        locked.forEach { AchievementRow(it) }
+    }
     if (unlocked.isNotEmpty()) {
         ListLabel("Unlocked · ${unlocked.size}")
         unlocked.forEach { AchievementRow(it) }
-    }
-    if (locked.isNotEmpty()) {
-        ListLabel("Locked · ${locked.size}")
-        val shown = if (showAllLocked) locked else locked.take(collapsedLocked)
-        shown.forEach { AchievementRow(it) }
-        if (locked.size > collapsedLocked) {
-            TextButton(onClick = { showAllLocked = !showAllLocked }) {
-                Text(if (showAllLocked) "Show fewer" else "Show all ${locked.size} locked")
-            }
-        }
     }
 }
 

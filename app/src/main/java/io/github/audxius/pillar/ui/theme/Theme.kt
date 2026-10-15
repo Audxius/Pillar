@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import io.github.audxius.pillar.data.AppFont
 import io.github.audxius.pillar.data.AppGraph
 import io.github.audxius.pillar.data.AppSettings
 import io.github.audxius.pillar.data.ThemeMode
+import io.github.audxius.pillar.data.UiStyle
 import io.github.audxius.pillar.data.UserData
 
 data class PalettePreset(val id: String, val name: String, val primary: Color, val secondary: Color, val tertiary: Color)
@@ -53,6 +55,8 @@ val Palettes = listOf(
     PalettePreset("forest", "Forest", Color(0xFF4ADE80), Color(0xFFA3E635), Color(0xFF2DD4BF)),
     PalettePreset("dmg", "Pocket", Color(0xFF9BBC0F), Color(0xFF6E9A2A), Color(0xFFC4CF8A)),
     PalettePreset("famicom", "Famicom", Color(0xFFE4002B), Color(0xFFD4A84A), Color(0xFFF2E6CE)),
+    PalettePreset("aero", "Aero", Color(0xFF1E9BE8), Color(0xFF6CCB3B), Color(0xFF00C2D9)),
+    PalettePreset("y2k", "Dreamcast", Color(0xFFFF7A00), Color(0xFF2E6BFF), Color(0xFFB4FF39)),
     PalettePreset("mono", "Mono", Color(0xFFE6E6EA), Color(0xFF9A9AA6), Color(0xFFFFFFFF)),
 )
 
@@ -141,30 +145,37 @@ private fun buildScheme(p: PalettePreset, mode: ThemeMode, systemDark: Boolean):
 }
 
 @OptIn(ExperimentalTextApi::class)
-private fun variable(res: Int, weight: Int) =
-    Font(res, FontWeight(weight), variationSettings = FontVariation.Settings(FontVariation.weight(weight)))
+private fun variable(res: Int, weight: Int, style: FontStyle = FontStyle.Normal) =
+    Font(res, FontWeight(weight), style, variationSettings = FontVariation.Settings(FontVariation.weight(weight)))
 
 private fun familyFor(font: AppFont): FontFamily = when (font) {
     AppFont.NUNITO -> FontFamily(listOf(400, 500, 600, 700, 800, 900).map { variable(R.font.nunito, it) })
     AppFont.OUTFIT -> FontFamily(listOf(300, 400, 500, 600, 700, 800).map { variable(R.font.outfit, it) })
     AppFont.SPACE_GROTESK -> FontFamily(listOf(400, 500, 600, 700).map { variable(R.font.space_grotesk, it) })
     AppFont.PIXEL -> FontFamily(Font(R.font.press_start))
+    AppFont.EXO -> FontFamily(
+        listOf(400, 500, 600, 700, 800, 900).flatMap { listOf(variable(R.font.exo2, it), variable(R.font.exo2_italic, it, FontStyle.Italic)) }
+    )
     AppFont.SYSTEM -> FontFamily.Default
 }
 
-private fun typographyFor(font: AppFont): Typography {
+private fun typographyFor(font: AppFont, style: UiStyle): Typography {
     val f = familyFor(font)
     val base = Typography()
+    // Y2K headings are heavy and slanted, like late-90s game box type.
+    val y2k = style == UiStyle.Y2K
     fun TextStyle.with(weight: FontWeight, spacing: Float? = null) =
         copy(fontFamily = f, fontWeight = weight, letterSpacing = spacing?.em ?: letterSpacing)
+    fun TextStyle.heading(weight: FontWeight, spacing: Float? = null) =
+        with(if (y2k) FontWeight.Black else weight, spacing).let { if (y2k) it.copy(fontStyle = FontStyle.Italic) else it }
     return Typography(
-        displayLarge = base.displayLarge.with(FontWeight.Black, -0.02f),
-        displayMedium = base.displayMedium.with(FontWeight.Black, -0.02f),
-        displaySmall = base.displaySmall.with(FontWeight.ExtraBold, -0.015f),
-        headlineLarge = base.headlineLarge.with(FontWeight.ExtraBold, -0.01f),
-        headlineMedium = base.headlineMedium.with(FontWeight.ExtraBold, -0.01f),
-        headlineSmall = base.headlineSmall.with(FontWeight.Bold, -0.005f),
-        titleLarge = base.titleLarge.with(FontWeight.ExtraBold),
+        displayLarge = base.displayLarge.heading(FontWeight.Black, -0.02f),
+        displayMedium = base.displayMedium.heading(FontWeight.Black, -0.02f),
+        displaySmall = base.displaySmall.heading(FontWeight.ExtraBold, -0.015f),
+        headlineLarge = base.headlineLarge.heading(FontWeight.ExtraBold, -0.01f),
+        headlineMedium = base.headlineMedium.heading(FontWeight.ExtraBold, -0.01f),
+        headlineSmall = base.headlineSmall.heading(FontWeight.Bold, -0.005f),
+        titleLarge = base.titleLarge.heading(FontWeight.ExtraBold),
         titleMedium = base.titleMedium.with(FontWeight.Bold),
         titleSmall = base.titleSmall.with(FontWeight.Bold),
         bodyLarge = base.bodyLarge.with(FontWeight.Medium),
@@ -225,7 +236,7 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         LocalIsDark provides dark,
         LocalDensity provides Density(density.density, density.fontScale * fontScale),
     ) {
-        MaterialTheme(colorScheme = scheme, typography = typographyFor(settings.font), shapes = shapes) {
+        MaterialTheme(colorScheme = scheme, typography = typographyFor(settings.font, settings.uiStyle), shapes = shapes) {
             // No root Surface, so set the default text/icon color explicitly.
             CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
         }

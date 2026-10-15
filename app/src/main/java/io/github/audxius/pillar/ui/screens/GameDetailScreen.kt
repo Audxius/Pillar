@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +34,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Image
@@ -43,6 +46,8 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -103,6 +108,7 @@ import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.onColor
+import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.launch
 
 @Composable
@@ -166,137 +172,144 @@ private fun GameDetail(game: Game, src: String) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // The art gets its own framed panel, shown whole, so nothing is drawn over its subject.
-            Box(
-                Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 64.dp).fillMaxWidth().aspectRatio(16f / 9f)
-                    .shadow(18.dp, RoundedCornerShape(corner), ambientColor = accent, spotColor = accent)
-                    .clip(RoundedCornerShape(corner))
-            ) {
-                MultiImage(hero, Modifier.matchParentSize(), fit = true, onColor = { c -> accent = c; if (settings.ambientColor) ambient.value = c }) {
-                    Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(sysColor, lerp(sysColor, Color.Black, 0.7f)))))
-                }
-                Gloss(RoundedCornerShape(corner))
-            }
-
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Spacer(Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GameCover(
-                        game,
-                        Modifier.width(112.dp)
-                            .shadow(14.dp, RoundedCornerShape(corner * 0.7f), ambientColor = accent, spotColor = accent),
-                        sharedKey = "cover-$src-${game.id}",
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        // Top bar: back, and everything secondary in one menu.
+        Row(Modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            RoundIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") { nav.popBackStack() }
+            Spacer(Modifier.weight(1f))
+            Box {
+                var menu by remember { mutableStateOf(false) }
+                RoundIcon(Icons.Rounded.MoreVert, "More") { menu = true }
+                DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (fav) "Remove from favorites" else "Add to favorites") },
+                        leadingIcon = { Icon(if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline, null) },
+                        onClick = {
+                            menu = false
+                            scope.launch { graph.store.updateUser { u -> u.copy(favorites = if (fav) u.favorites - game.id else u.favorites + game.id) } }
+                        },
                     )
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        var logoFailed by remember(logo) { mutableStateOf(false) }
-                        if (settings.showLogos && logo != null && !logoFailed) {
-                            GameLogo(logo, gameTitle(game), maxWidth = 210.dp, maxHeight = 84.dp, area = 9500f, onFailed = { logoFailed = true })
-                            Spacer(Modifier.height(4.dp))
-                            Text(gameTitle(game), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        } else {
-                            Text(gameTitle(game), style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            SystemChip(game.system)
-                            LibraryRepository.tags(game.fileName).take(3).forEach { Pill(it) }
-                        }
+                    DropdownMenuItem(
+                        text = { Text("Change cover") }, leadingIcon = { Icon(Icons.Rounded.Image, null) },
+                        onClick = { menu = false; pickCover.launch(arrayOf("image/*")) },
+                    )
+                    if (user.customCover[game.id] != null) {
+                        DropdownMenuItem(
+                            text = { Text("Use automatic cover") }, leadingIcon = { Icon(Icons.Rounded.Image, null) },
+                            onClick = { menu = false; scope.launch { graph.store.updateUser { it.copy(customCover = it.customCover - game.id) } } },
+                        )
                     }
-                }
-                Spacer(Modifier.height(20.dp))
-
-                // Play, or download from RomM first.
-                val downloads by graph.downloads.states.collectAsStateWithLifecycle()
-                val dl = game.rommId?.let { downloads[it] }
-                when {
-                    game.remote && (dl is DownloadState.Queued || dl is DownloadState.Running) -> PrimaryAction(
-                        if (dl is DownloadState.Running) "Downloading ${(dl.fraction * 100).toInt()}%" else "Waiting to download",
-                        Icons.Rounded.CloudDownload, Modifier.fillMaxWidth().height(60.dp),
-                        progress = (dl as? DownloadState.Running)?.fraction ?: 0f,
-                    ) { graph.downloads.cancel(game.rommId!!) }
-                    game.remote -> PrimaryAction("Download & play", Icons.Rounded.CloudDownload, Modifier.fillMaxWidth().height(60.dp)) {
-                        if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        graph.downloadAndPlay(game)
-                    }
-                    else -> PrimaryAction("Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(60.dp)) {
-                        if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
-                    }
-                }
-                if (dl is DownloadState.Failed) {
-                    Text(dl.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
-                }
-                if (game.remote) {
-                    Text(
-                        "On your RomM server · ${formatBytes(game.size)}. It downloads to your ${systemName(game.system)} folder and starts when it's ready.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
+                    DropdownMenuItem(
+                        text = { Text("Rename") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                        onClick = { menu = false; renaming = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Hide game") }, leadingIcon = { Icon(Icons.Rounded.VisibilityOff, null) },
+                        onClick = { menu = false; confirmHide = true },
                     )
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    Modifier.align(Alignment.CenterHorizontally).clip(RoundedCornerShape(50)).tappable(RoundedCornerShape(50)) { emuSheet = true }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.SportsEsports, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    val custom = user.emulatorOverride[game.id] != null
-                    val installed = remember(command) { command != null && graph.launcher.isCommandAvailable(command) }
-                    Text(
-                        (command?.label ?: "No emulator available") +
-                            (if (custom) " · this game only" else "") +
-                            (if (command != null && !installed) " · not installed" else ""),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (installed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-
-                // Quick facts
-                Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        Fact(user.lastPlayed[game.id]?.let { timeAgo(it) } ?: "Never", "Last played")
-                        Fact("${user.playCount[game.id] ?: 0}", "Launches")
-                        Fact(formatBytes(game.size), "Size")
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ActionButton(if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline, if (fav) "Favorited" else "Favorite", Modifier.weight(1f), highlight = fav) {
-                        scope.launch { graph.store.updateUser { u -> u.copy(favorites = if (fav) u.favorites - game.id else u.favorites + game.id) } }
-                    }
-                    ActionButton(Icons.Rounded.Image, "Cover", Modifier.weight(1f)) { pickCover.launch(arrayOf("image/*")) }
-                    ActionButton(Icons.Rounded.Edit, "Rename", Modifier.weight(1f)) { renaming = true }
-                    ActionButton(Icons.Rounded.VisibilityOff, "Hide", Modifier.weight(1f)) { confirmHide = true }
-                }
-                if (user.customCover[game.id] != null) {
-                    TextButton(onClick = { scope.launch { graph.store.updateUser { it.copy(customCover = it.customCover - game.id) } } }) {
-                        Text("Reset to automatic cover")
-                    }
-                }
-
-                GameSaves(game)
-                (user.rommIds[game.id] ?: game.rommId)?.let { rommId -> RommInfo(rommId) }
-                if (settings.raConfigured) AchievementsSection(game)
-
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    if (game.remote) "RomM · ${game.fileName}" else game.path ?: game.fileName,
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(32.dp))
-                Spacer(Modifier.navigationBarsPadding())
             }
         }
 
-        // Floating top bar
-        Row(Modifier.statusBarsPadding().padding(12.dp).fillMaxWidth()) {
-            RoundIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") { nav.popBackStack() }
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GameCover(
+                    game,
+                    Modifier.width(132.dp)
+                        .shadow(16.dp, RoundedCornerShape(corner * 0.7f), ambientColor = sysColor, spotColor = sysColor),
+                    sharedKey = "cover-$src-${game.id}",
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    // The logo or the title, never both.
+                    Box(Modifier.fillMaxWidth().heightIn(min = 56.dp), contentAlignment = Alignment.CenterStart) {
+                        TitleOrLogo(game, maxWidth = 200.dp, maxHeight = 90.dp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SystemChip(game.system)
+                        LibraryRepository.tags(game.fileName).take(3).forEach { Pill(it) }
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+
+            // Emulator choice sits right above Play.
+            val custom = user.emulatorOverride[game.id] != null
+            val installed = remember(command) { command != null && graph.launcher.isCommandAvailable(command) }
+            Row(
+                Modifier.fillMaxWidth().styledSurface(RoundedCornerShape(16.dp)).tappable(RoundedCornerShape(16.dp)) { emuSheet = true }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.SportsEsports, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (custom) "Emulator for this game" else "Emulator",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        (command?.label ?: "No emulator available") + if (command != null && !installed) " · not installed" else "",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (installed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(Icons.Rounded.ExpandMore, "Change", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(10.dp))
+
+            // Play, or download from RomM first.
+            val downloads by graph.downloads.states.collectAsStateWithLifecycle()
+            val dl = game.rommId?.let { downloads[it] }
+            when {
+                game.remote && (dl is DownloadState.Queued || dl is DownloadState.Running) -> PrimaryAction(
+                    if (dl is DownloadState.Running) "Downloading ${(dl.fraction * 100).toInt()}%" else "Waiting to download",
+                    Icons.Rounded.CloudDownload, Modifier.fillMaxWidth().height(58.dp),
+                    progress = (dl as? DownloadState.Running)?.fraction ?: 0f,
+                ) { graph.downloads.cancel(game.rommId!!) }
+                game.remote -> PrimaryAction("Download & play", Icons.Rounded.CloudDownload, Modifier.fillMaxWidth().height(58.dp)) {
+                    if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    graph.downloadAndPlay(game)
+                }
+                else -> PrimaryAction("Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(58.dp)) {
+                    if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
+                }
+            }
+            if (dl is DownloadState.Failed) {
+                Text(dl.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            }
+            if (game.remote) {
+                Text(
+                    "On your RomM server · ${formatBytes(game.size)}. It downloads to your ${systemName(game.system)} folder and starts when it's ready.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+
+            Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                    Fact(user.lastPlayed[game.id]?.let { timeAgo(it) } ?: "Never", "Last played")
+                    Fact("${user.playCount[game.id] ?: 0}", "Launches")
+                    Fact(formatBytes(game.size), "Size")
+                }
+            }
+
+            GameSaves(game)
+            (user.rommIds[game.id] ?: game.rommId)?.let { rommId -> RommInfo(rommId) }
+            if (settings.raConfigured) AchievementsSection(game)
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                if (game.remote) "RomM · ${game.fileName}" else game.path ?: game.fileName,
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.navigationBarsPadding())
         }
     }
 

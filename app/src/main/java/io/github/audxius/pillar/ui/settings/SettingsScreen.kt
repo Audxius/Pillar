@@ -84,7 +84,6 @@ import io.github.audxius.pillar.data.HomeLayout
 import io.github.audxius.pillar.data.CustomCommand
 import io.github.audxius.pillar.data.OnlineArt
 import io.github.audxius.pillar.data.OrientationMode
-import io.github.audxius.pillar.data.PlatformLayout
 import io.github.audxius.pillar.data.Saf
 import io.github.audxius.pillar.data.SystemOverride
 import io.github.audxius.pillar.data.ThemeMode
@@ -144,7 +143,7 @@ fun SettingsScreen(page: SettingsPage?) {
     androidx.compose.runtime.LaunchedEffect(Unit) { ambient.value = null }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = if (page == null) BottomBarSpace else 40.dp),
+        contentPadding = PaddingValues(bottom = BottomBarSpace),
     ) {
         item {
             if (page == null) ScreenHeader("Settings", "Make Pillar yours")
@@ -317,7 +316,7 @@ private fun AppearancePage() {
     SettingsGroup("Text") {
         SettingChoice(
             "Font",
-            listOf(AppFont.NUNITO to "Nunito", AppFont.OUTFIT to "Outfit", AppFont.SPACE_GROTESK to "Space Grotesk", AppFont.PIXEL to "Pixel", AppFont.SYSTEM to "System"),
+            listOf(AppFont.NUNITO to "Nunito", AppFont.OUTFIT to "Outfit", AppFont.SPACE_GROTESK to "Space Grotesk", AppFont.EXO to "Exo 2", AppFont.PIXEL to "Pixel", AppFont.SYSTEM to "System"),
             s.font,
         ) { f -> update { it.copy(font = f) } }
         SettingSlider("Text size", s.textScale, 0.85f..1.3f, steps = 8, label = { "${(it * 100).toInt()}%" }) { v ->
@@ -365,11 +364,6 @@ private fun AppearancePage() {
         ) { c -> update { it.copy(coverShape = c) } }
         SettingSlider("Grid columns", s.gridColumns.toFloat(), 2f..5f, steps = 2, label = { "${it.toInt()}" }) { v -> update { it.copy(gridColumns = v.toInt()) } }
         SettingSwitch("Show game titles", "Under covers in grids and rows", s.showGameTitles) { v -> update { it.copy(showGameTitles = v) } }
-        SettingChoice(
-            "Library platforms",
-            listOf(PlatformLayout.CARDS to "Big cards", PlatformLayout.GRID to "Grid", PlatformLayout.LIST to "List"),
-            s.platformLayout,
-        ) { l -> update { it.copy(platformLayout = l) } }
         SettingSwitch("Navigation labels", "Text under the bottom bar icons", s.navLabels) { v -> update { it.copy(navLabels = v) } }
     }
 }

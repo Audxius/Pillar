@@ -12,7 +12,7 @@ val PillarJson = Json {
 }
 
 @Serializable enum class ThemeMode { SYSTEM, DARK, AMOLED, LIGHT }
-@Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL }
+@Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL, EXO }
 @Serializable enum class BackgroundStyle { STYLE, ART, AURORA, GRADIENT, SOLID, IMAGE }
 @Serializable enum class UiStyle { GLASS, AERO, Y2K }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }

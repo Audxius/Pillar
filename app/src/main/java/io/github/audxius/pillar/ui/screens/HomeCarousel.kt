@@ -2,14 +2,10 @@
 
 package io.github.audxius.pillar.ui.screens
 
-import android.os.BatteryManager
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,18 +30,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.BatteryChargingFull
-import androidx.compose.material.icons.rounded.BatteryFull
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,8 +44,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,33 +55,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.audxius.pillar.data.CoverShape
+import io.github.audxius.pillar.data.DownloadState
 import io.github.audxius.pillar.data.Game
-import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.Routes
 import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.GameLogo
 import io.github.audxius.pillar.ui.components.Gloss
-import io.github.audxius.pillar.ui.components.PrimaryAction
-import io.github.audxius.pillar.ui.theme.chipColors
-import io.github.audxius.pillar.ui.theme.styledSurface
-import androidx.compose.material.icons.rounded.CloudDownload
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.unit.Dp
 import io.github.audxius.pillar.ui.components.MultiImage
-import io.github.audxius.pillar.ui.components.fadeBottom
+import io.github.audxius.pillar.ui.components.PrimaryAction
 import io.github.audxius.pillar.ui.components.gameTitle
 import io.github.audxius.pillar.ui.components.ratio
 import io.github.audxius.pillar.ui.components.rememberArt
@@ -106,13 +86,9 @@ import io.github.audxius.pillar.ui.theme.LocalCorner
 import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
-import io.github.audxius.pillar.ui.theme.onColor
-import kotlinx.coroutines.delay
+import io.github.audxius.pillar.ui.theme.chipColors
+import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import kotlin.math.abs
 
 private data class Shelf(val key: String, val label: String, val games: List<Game>)
@@ -173,32 +149,40 @@ fun HomeCarouselScreen() {
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         CarouselTopBar(shelves, shelf.key) { shelfKey = it }
-        Spacer(Modifier.height(14.dp))
-        // The art sits in its own frame, shown whole, with nothing drawn over it.
+        Spacer(Modifier.height(12.dp))
+        // A slim widescreen strip filled edge to edge: no bars around wide or tall art. Tall art
+        // (DS screens, box shots) is anchored to the top so the title screen stays in view.
         val corner = LocalCorner.current
         Box(
-            Modifier.padding(horizontal = 16.dp).fillMaxWidth().aspectRatio(16f / 9f)
-                .shadow(18.dp, RoundedCornerShape(corner), ambientColor = selColor, spotColor = selColor)
+            Modifier.padding(horizontal = 16.dp).fillMaxWidth().aspectRatio(2.3f)
+                .shadow(14.dp, RoundedCornerShape(corner), ambientColor = selColor, spotColor = selColor)
                 .clip(RoundedCornerShape(corner))
         ) {
-            Crossfade(targetState = selected.id to hero, animationSpec = tween(400), label = "hero") { (_, src) ->
-                MultiImage(src, Modifier.fillMaxSize(), fit = true) {
+            Crossfade(targetState = selected.id to hero, animationSpec = tween(350), label = "hero") { (_, src) ->
+                MultiImage(src, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter) {
                     Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(selColor, lerp(selColor, Color.Black, 0.6f)))))
                 }
             }
             Gloss(RoundedCornerShape(corner))
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         GameInfo(selected)
-        Spacer(Modifier.weight(1f))
-        Carousel(shelf.games, listState, selectedIndex, onLongPress = { quick = it })
-        Text(
-            "${selectedIndex + 1} / ${shelf.games.size}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp),
-        )
-        Spacer(Modifier.navigationBarsPadding().height(BottomBarSpace - 22.dp))
+        Spacer(Modifier.height(12.dp))
+        // The carousel takes whatever room is left above the dock, so covers are never hidden.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val itemHeight = ((maxHeight - 26.dp) / 1.12f).coerceIn(96.dp, 230.dp)
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+                Carousel(shelf.games, listState, selectedIndex, itemHeight, onLongPress = { quick = it })
+                Text(
+                    "${selectedIndex + 1} / ${shelf.games.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp),
+                )
+            }
+        }
+        // Room for the floating dock.
+        Spacer(Modifier.navigationBarsPadding().height(96.dp))
     }
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
 }
@@ -255,68 +239,58 @@ fun StyledIconButton(
     ) { Icon(icon, label, tint = tint, modifier = Modifier.size(size * 0.46f)) }
 }
 
+/** Logo or title (never both), a few facts and the Play button. */
 @Composable
 private fun GameInfo(game: Game) {
     val graph = LocalGraph.current
     val user = LocalUserData.current
-    val settings = LocalSettings.current
-    val nav = LocalNav.current
     val launch = rememberGameLauncher()
-    val scope = rememberCoroutineScope()
-    val art = rememberArt(game)
-    val logo = remember(game.id, art) { graph.library.logo(game, art) }
-    val fav = game.id in user.favorites
-    val color = systemColor(game.system)
     val downloads by graph.downloads.states.collectAsStateWithLifecycle()
 
-    AnimatedContent(
-        targetState = game,
-        transitionSpec = { (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 8 }) togetherWith fadeOut(tween(120)) },
-        contentKey = { it.id },
-        label = "gameInfo",
-    ) { g ->
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(118.dp), verticalArrangement = Arrangement.Center) {
-            var logoFailed by remember(g.id) { mutableStateOf(false) }
-            val gLogo = if (g.id == game.id) logo else null
-            if (settings.showLogos && gLogo != null && !logoFailed) {
-                // Same visual weight for every logo, whatever its shape or padding.
-                GameLogo(gLogo, gameTitle(g), maxWidth = 260.dp, maxHeight = 78.dp, onFailed = { logoFailed = true })
-            } else {
-                Text(gameTitle(g), style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(8.dp))
+    Crossfade(targetState = game, animationSpec = tween(180), label = "gameInfo") { g ->
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            // Fixed height so the layout doesn't jump between logos, titles and loading.
+            Box(Modifier.fillMaxWidth().height(72.dp), contentAlignment = Alignment.CenterStart) { TitleOrLogo(g) }
+            Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                InfoChip(systemName(g.system), color)
+                InfoChip(systemName(g.system), systemColor(g.system))
                 if (g.remote) InfoChip("On RomM", null, Icons.Rounded.CloudDownload)
                 user.lastPlayed[g.id]?.let { InfoChip(timeAgo(it), null) }
                 if (user.raIds[g.id] != null) InfoChip("Trophies", Color(0xFFFFC94D), Icons.Rounded.EmojiEvents)
             }
         }
     }
-    Spacer(Modifier.height(10.dp))
-    Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        val dl = game.rommId?.let { downloads[it] }
-        val busy = game.remote && (dl is io.github.audxius.pillar.data.DownloadState.Queued || dl is io.github.audxius.pillar.data.DownloadState.Running)
-        PrimaryAction(
-            label = when {
-                busy && dl is io.github.audxius.pillar.data.DownloadState.Running -> "${(dl.fraction * 100).toInt()}%"
-                busy -> "Waiting"
-                game.remote -> "Download & play"
-                else -> "Play"
-            },
-            icon = if (game.remote) Icons.Rounded.CloudDownload else Icons.Rounded.PlayArrow,
-            modifier = Modifier.weight(1f).height(54.dp),
-            progress = (dl as? io.github.audxius.pillar.data.DownloadState.Running)?.fraction?.takeIf { busy },
-        ) { if (!busy) launch(game, null) }
-        Spacer(Modifier.width(10.dp))
-        StyledIconButton(Icons.Rounded.Info, "Details", size = 54.dp) { nav.navigate(Routes.game(game.id, "home")) }
-        Spacer(Modifier.width(10.dp))
-        StyledIconButton(
-            if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Favorite", size = 54.dp,
-            tint = if (fav) Color(0xFFFFC94D) else MaterialTheme.colorScheme.onSurface,
-        ) {
-            scope.launch { graph.store.updateUser { u -> u.copy(favorites = if (fav) u.favorites - game.id else u.favorites + game.id) } }
-        }
+    Spacer(Modifier.height(12.dp))
+    val dl = game.rommId?.let { downloads[it] }
+    val busy = game.remote && (dl is DownloadState.Queued || dl is DownloadState.Running)
+    PrimaryAction(
+        label = when {
+            busy && dl is DownloadState.Running -> "Downloading ${(dl.fraction * 100).toInt()}%"
+            busy -> "Waiting to download"
+            game.remote -> "Download & play"
+            else -> "Play"
+        },
+        icon = if (game.remote) Icons.Rounded.CloudDownload else Icons.Rounded.PlayArrow,
+        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(52.dp),
+        progress = (dl as? DownloadState.Running)?.fraction?.takeIf { busy },
+    ) { if (!busy) launch(game, null) }
+}
+
+/** Shows the game's logo when enabled and available, otherwise its title. Nothing flashes in between. */
+@Composable
+fun TitleOrLogo(g: Game, maxWidth: Dp = 260.dp, maxHeight: Dp = 72.dp, alignment: Alignment = Alignment.CenterStart) {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    val art = rememberArt(g)
+    val logo = remember(g.id, art) { if (settings.showLogos) graph.library.logo(g, art) else null }
+    var failed by remember(logo) { mutableStateOf(false) }
+    // While artwork is still being looked up for a game that may have a logo, show nothing rather
+    // than the plain title for a moment.
+    val pending = settings.showLogos && art == null
+    when {
+        logo != null && !failed -> GameLogo(logo, gameTitle(g), maxWidth = maxWidth, maxHeight = maxHeight, alignment = alignment, onFailed = { failed = true })
+        pending -> Unit
+        else -> Text(gameTitle(g), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -340,15 +314,13 @@ private fun InfoChip(text: String, dot: Color?, icon: androidx.compose.ui.graphi
 }
 
 @Composable
-private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, onLongPress: (Game) -> Unit) {
+private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, itemHeight: Dp, onLongPress: (Game) -> Unit) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
-    val launch = rememberGameLauncher()
+    val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     val corner = LocalCorner.current
-    val aspects by graph.artwork.aspects.collectAsStateWithLifecycle()
-    val itemHeight = 196.dp
-    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.14f + 10.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp)) {
         // Side padding that lets the first and last cover sit in the middle.
         val side = ((maxWidth - itemHeight * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
         LazyRow(
@@ -361,23 +333,18 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
         ) {
             itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
                 val focused = index == selectedIndex
-                val scale by animateFloatAsState(if (focused) 1.12f else 0.9f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "s")
-                val alpha by animateFloatAsState(if (focused) 1f else 0.65f, label = "a")
-                val glow = systemColor(g.system)
+                val scale by animateFloatAsState(if (focused) 1.1f else 0.9f, spring(dampingRatio = 0.75f, stiffness = 500f), label = "s")
                 // Uniform tiles by default; with "Real shape" each cover sizes to its art.
-                val ratio = if (settings.coverShape == io.github.audxius.pillar.data.CoverShape.NATURAL) {
-                    (aspects[g.id] ?: graph.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.8f)
+                val ratio = if (settings.coverShape == CoverShape.NATURAL) {
+                    (io.github.audxius.pillar.ui.components.rememberAspect(g) ?: graph.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.8f)
                 } else settings.coverShape.ratio()
                 GameCover(
                     g,
                     Modifier.height(itemHeight).width(itemHeight * ratio)
-                        .graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha }
-                        .then(
-                            if (focused) Modifier.shadow(20.dp, RoundedCornerShape(corner * 0.7f), ambientColor = glow, spotColor = glow)
-                            else Modifier
-                        )
+                        .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (focused) 1f else 0.7f }
                         .tappable(RoundedCornerShape(corner * 0.7f), onLongClick = { onLongPress(g) }) {
-                            if (focused) launch(g, null) else scope.launch { state.animateScrollToItem(index) }
+                            // Tapping the centered game opens its page; tapping another one brings it to the center.
+                            if (focused) nav.navigate(Routes.game(g.id, "home")) else scope.launch { state.animateScrollToItem(index) }
                         },
                     sharedKey = "cover-home-${g.id}",
                     ratio = ratio,
