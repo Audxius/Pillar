@@ -1,0 +1,325 @@
+@file:OptIn(ExperimentalSharedTransitionApi::class)
+
+package io.github.audxius.pillar.ui
+
+import android.app.Activity
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import io.github.audxius.pillar.data.AppGraph
+import io.github.audxius.pillar.data.EmuCommand
+import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.data.LaunchResult
+import io.github.audxius.pillar.ui.components.LocalNavScope
+import io.github.audxius.pillar.ui.components.LocalSharedScope
+import io.github.audxius.pillar.ui.components.PillarBackground
+import io.github.audxius.pillar.ui.components.tappable
+import io.github.audxius.pillar.ui.screens.AchievementsScreen
+import io.github.audxius.pillar.ui.screens.AppsScreen
+import io.github.audxius.pillar.ui.screens.GameDetailScreen
+import io.github.audxius.pillar.ui.screens.HomeScreen
+import io.github.audxius.pillar.ui.screens.LibraryScreen
+import io.github.audxius.pillar.ui.screens.OnboardingScreen
+import io.github.audxius.pillar.ui.screens.PlatformScreen
+import io.github.audxius.pillar.ui.screens.RommRomScreen
+import io.github.audxius.pillar.ui.screens.RommPlatformScreen
+import io.github.audxius.pillar.ui.screens.RommScreen
+import io.github.audxius.pillar.ui.screens.SearchScreen
+import io.github.audxius.pillar.ui.settings.SettingsPage
+import io.github.audxius.pillar.ui.settings.SettingsScreen
+import io.github.audxius.pillar.ui.theme.LocalGraph
+import io.github.audxius.pillar.ui.theme.LocalIsDark
+import io.github.audxius.pillar.ui.theme.LocalSettings
+import io.github.audxius.pillar.ui.theme.LocalUserData
+import io.github.audxius.pillar.ui.theme.PillarTheme
+import kotlinx.coroutines.launch
+
+object Routes {
+    const val HOME = "home"
+    const val LIBRARY = "library"
+    const val ROMM = "romm"
+    const val RA = "ra"
+    const val SETTINGS = "settings"
+    const val SEARCH = "search"
+    const val APPS = "apps"
+    const val ONBOARDING = "onboarding"
+    fun platform(system: String) = "platform/${Uri.encode(system)}"
+    fun game(id: String, src: String = "x") = "game?id=${Uri.encode(id)}&src=${Uri.encode(src)}"
+    fun rommPlatform(id: Int, name: String) = "romm/platform/$id?name=${Uri.encode(name)}"
+    fun rommRom(id: Int) = "romm/rom/$id"
+    fun settingsPage(page: SettingsPage) = "settings/${page.name}"
+}
+
+private data class Tab(val route: String, val label: String, val icon: ImageVector)
+
+private val Tabs = listOf(
+    Tab(Routes.HOME, "Home", Icons.Rounded.Home),
+    Tab(Routes.LIBRARY, "Library", Icons.Rounded.GridView),
+    Tab(Routes.ROMM, "RomM", Icons.Rounded.Cloud),
+    Tab(Routes.RA, "Trophies", Icons.Rounded.EmojiEvents),
+    Tab(Routes.SETTINGS, "Settings", Icons.Rounded.Tune),
+)
+
+val LocalNav = compositionLocalOf<NavHostController> { error("No nav") }
+val LocalSnackbar = compositionLocalOf { SnackbarHostState() }
+
+/** Space screens leave at the bottom so content can scroll above the floating bar. */
+val BottomBarSpace = 118.dp
+
+@Composable
+fun PillarRoot(graph: AppGraph) {
+    val settings by graph.store.settings.collectAsStateWithLifecycle()
+    val user by graph.store.userData.collectAsStateWithLifecycle()
+    PillarTheme(graph, settings, user) {
+        val nav = rememberNavController()
+        val snackbar = remember { SnackbarHostState() }
+        val backStack by nav.currentBackStackEntryAsState()
+        val route = backStack?.destination?.route
+        val showBar = route in Tabs.map { it.route }
+        val dark = LocalIsDark.current
+        // Decided once so finishing onboarding doesn't rebuild the nav graph underneath us.
+        val startRoute = remember { if (settings.onboarded) Routes.HOME else Routes.ONBOARDING }
+
+        val view = LocalView.current
+        SideEffect {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+
+        CompositionLocalProvider(LocalNav provides nav, LocalSnackbar provides snackbar) {
+            Box(Modifier.fillMaxSize()) {
+                PillarBackground()
+                SharedTransitionLayout {
+                    CompositionLocalProvider(LocalSharedScope provides this) {
+                        PillarNavHost(nav, start = startRoute)
+                    }
+                }
+                // Keeps the clock and icons readable over content scrolling underneath the status bar.
+                val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val bg = MaterialTheme.colorScheme.background
+                Box(
+                    Modifier.fillMaxWidth().height(statusTop + 14.dp)
+                        .background(Brush.verticalGradient(0f to bg.copy(alpha = 0.92f), 0.65f to bg.copy(alpha = 0.6f), 1f to Color.Transparent))
+                )
+                AnimatedVisibility(
+                    visible = showBar,
+                    enter = slideInVertically { it } + fadeIn(),
+                    exit = slideOutVertically { it } + fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
+                    BottomBar(route) { target ->
+                        if (target == route) return@BottomBar
+                        nav.navigate(target) {
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                }
+                SnackbarHost(
+                    snackbar,
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                        .padding(bottom = if (showBar) BottomBarSpace - 20.dp else 16.dp, start = 16.dp, end = 16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillarNavHost(nav: NavHostController, start: String) {
+    val animations = LocalSettings.current.animations
+    val enter = if (animations) fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.97f) else fadeIn(tween(0))
+    val exit = if (animations) fadeOut(tween(200)) else fadeOut(tween(0))
+    val popEnter = if (animations) fadeIn(tween(260)) else fadeIn(tween(0))
+    val popExit = if (animations) fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.97f) else fadeOut(tween(0))
+
+    NavHost(
+        navController = nav,
+        startDestination = start,
+        enterTransition = { enter },
+        exitTransition = { exit },
+        popEnterTransition = { popEnter },
+        popExitTransition = { popExit },
+    ) {
+        fun scoped(content: @Composable () -> Unit): @Composable androidx.compose.animation.AnimatedContentScope.(androidx.navigation.NavBackStackEntry) -> Unit = {
+            CompositionLocalProvider(LocalNavScope provides this) { content() }
+        }
+        composable(Routes.ONBOARDING, content = scoped { OnboardingScreen() })
+        composable(Routes.HOME, content = scoped { HomeScreen() })
+        composable(Routes.LIBRARY, content = scoped { LibraryScreen() })
+        composable(Routes.ROMM, content = scoped { RommScreen() })
+        composable(Routes.RA, content = scoped { AchievementsScreen() })
+        composable(Routes.SETTINGS, content = scoped { SettingsScreen(null) })
+        composable(Routes.SEARCH, content = scoped { SearchScreen() })
+        composable(Routes.APPS, content = scoped { AppsScreen() })
+        composable(
+            "settings/{page}",
+            arguments = listOf(navArgument("page") { type = NavType.StringType }),
+        ) { entry ->
+            val page = runCatching { SettingsPage.valueOf(entry.arguments?.getString("page").orEmpty()) }.getOrNull()
+            CompositionLocalProvider(LocalNavScope provides this) { SettingsScreen(page) }
+        }
+        composable(
+            "platform/{system}",
+            arguments = listOf(navArgument("system") { type = NavType.StringType }),
+        ) { entry ->
+            CompositionLocalProvider(LocalNavScope provides this) {
+                PlatformScreen(entry.arguments?.getString("system").orEmpty())
+            }
+        }
+        composable(
+            "game?id={id}&src={src}",
+            arguments = listOf(
+                navArgument("id") { type = NavType.StringType },
+                navArgument("src") { type = NavType.StringType; defaultValue = "x" },
+            ),
+        ) { entry ->
+            CompositionLocalProvider(LocalNavScope provides this) {
+                GameDetailScreen(entry.arguments?.getString("id").orEmpty(), entry.arguments?.getString("src") ?: "x")
+            }
+        }
+        composable(
+            "romm/platform/{id}?name={name}",
+            arguments = listOf(
+                navArgument("id") { type = NavType.IntType },
+                navArgument("name") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            CompositionLocalProvider(LocalNavScope provides this) {
+                RommPlatformScreen(entry.arguments?.getInt("id") ?: 0, entry.arguments?.getString("name").orEmpty())
+            }
+        }
+        composable(
+            "romm/rom/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.IntType }),
+        ) { entry ->
+            CompositionLocalProvider(LocalNavScope provides this) { RommRomScreen(entry.arguments?.getInt("id") ?: 0) }
+        }
+    }
+}
+
+@Composable
+private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
+    val settings = LocalSettings.current
+    val dark = LocalIsDark.current
+    val shape = RoundedCornerShape(30.dp)
+    Row(
+        Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (settings.glassCards) 0.86f else 1f))
+            .border(1.dp, if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f), shape)
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Tabs.forEach { tab ->
+            val selected = current == tab.route
+            val bg by animateColorAsState(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent, label = "tabBg",
+            )
+            val fg by animateColorAsState(
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, label = "tabFg",
+            )
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(24.dp)).background(bg)
+                    .tappable(RoundedCornerShape(24.dp)) { onSelect(tab.route) }
+                    .padding(vertical = if (settings.navLabels) 8.dp else 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(tab.icon, tab.label, tint = fg, modifier = Modifier.size(24.dp))
+                if (settings.navLabels) {
+                    Text(tab.label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/** Launches a game with its configured emulator, reporting problems in the snackbar. */
+@Composable
+fun rememberGameLauncher(): (Game, EmuCommand?) -> Unit {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    val user = LocalUserData.current
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+    return remember(settings, user) {
+        { game, override ->
+            val cmd = override ?: graph.launcher.selectCommand(game, settings, user)
+            if (cmd == null) {
+                scope.launch { snackbar.showSnackbar("No emulator is set up for ${graph.catalog.fullName(game.system)}") }
+            } else {
+                when (val r = graph.launcher.launch(game, cmd)) {
+                    LaunchResult.Started -> graph.markPlayed(game)
+                    is LaunchResult.Failed -> scope.launch { snackbar.showSnackbar(r.message) }
+                }
+            }
+        }
+    }
+}
