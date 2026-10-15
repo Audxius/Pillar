@@ -17,6 +17,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import io.github.audxius.pillar.BuildConfig
 import okhttp3.OkHttpClient
 import java.io.File
@@ -49,7 +56,7 @@ class AppGraph(val context: Context) {
     val launcher = GameLauncher(context, catalog)
     val romm = RommClient(http) { store.settings.value }
     val raClient = RaClient(context, http) { store.settings.value }
-    val ra = RaRepository(raClient, store, scope)
+    val ra = RaRepository(context, raClient, store, catalog, scope)
     val rommRepo = RommRepository(context, romm, store, catalog, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
     val artwork = ArtworkRepository(context, http, catalog, store, scope)
@@ -111,7 +118,20 @@ class AppGraph(val context: Context) {
         downloads.enqueue(rom, playAfter = true)
     }
 
+    @OptIn(FlowPreview::class)
+    private fun matchRetroAchievements() = scope.launch {
+        // Re-run when the library, the RA account or the matching switch changes, or matches are forgotten.
+        combine(
+            library.games,
+            store.settings.map { Triple(it.raUser, it.raApiKey, it.raMatchTitles) }.distinctUntilChanged(),
+            store.userData.map { it.raIds.size }.distinctUntilChanged(),
+        ) { games, _, _ -> games }
+            .debounce(3000)
+            .collect { ra.matchLibrary(it) }
+    }
+
     init {
+        matchRetroAchievements()
         scope.launch {
             downloads.states.collect { states ->
                 for (s in states.values) {
@@ -139,11 +159,21 @@ class AppGraph(val context: Context) {
     }
 }
 
-class RaRepository(private val client: RaClient, private val store: SettingsStore, private val scope: CoroutineScope) {
+class RaRepository(
+    context: Context,
+    private val client: RaClient,
+    private val store: SettingsStore,
+    private val catalog: SystemCatalog,
+    private val scope: CoroutineScope,
+) {
+    private val hashes = RomHashCache(context)
+    private val matchMutex = Mutex()
+    private val pending = AtomicReference<List<Game>?>(null)
+    /** Games already looked at this process, so misses aren't hashed and searched again. */
+    private val tried: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
     private val _profile = MutableStateFlow<Loadable<RaProfile>>(Loadable.Idle)
     val profile: StateFlow<Loadable<RaProfile>> = _profile.asStateFlow()
-    private val _recent = MutableStateFlow<Loadable<List<RaRecentAchievement>>>(Loadable.Idle)
-    val recent: StateFlow<Loadable<List<RaRecentAchievement>>> = _recent.asStateFlow()
     private val _played = MutableStateFlow<Loadable<List<RaRecentGame>>>(Loadable.Idle)
     val played: StateFlow<Loadable<List<RaRecentGame>>> = _played.asStateFlow()
 
@@ -156,8 +186,17 @@ class RaRepository(private val client: RaClient, private val store: SettingsStor
             store.settings.map { it.raUser to it.raApiKey }.distinctUntilChanged().drop(1).collect {
                 lastRefresh = 0
                 progressCache.clear()
-                _profile.value = Loadable.Idle; _recent.value = Loadable.Idle; _played.value = Loadable.Idle
+                tried.clear()
+                _profile.value = Loadable.Idle; _played.value = Loadable.Idle
                 refresh(force = true)
+            }
+        }
+        // Matches were forgotten in Settings: earlier misses deserve another try too.
+        scope.launch {
+            var before = Int.MAX_VALUE
+            store.userData.map { it.raIds.size }.distinctUntilChanged().collect { n ->
+                if (n < before) tried.clear()
+                before = n
             }
         }
     }
@@ -168,12 +207,15 @@ class RaRepository(private val client: RaClient, private val store: SettingsStor
         if (!force && now - lastRefresh < 2 * 60 * 1000) return
         lastRefresh = now
         scope.launch {
+            // A failed refresh (often RA's rate limit) keeps what was already loaded.
             if (_profile.value !is Loadable.Ready) _profile.value = Loadable.Loading
-            _profile.value = runCatching { Loadable.Ready(client.profile()) }.getOrElse { Loadable.Error(it.message ?: "Failed") }
-            if (_recent.value !is Loadable.Ready) _recent.value = Loadable.Loading
-            _recent.value = runCatching { Loadable.Ready(client.recentAchievements(14)) }.getOrElse { Loadable.Error(it.message ?: "Failed") }
+            runCatching { client.profile() }
+                .onSuccess { _profile.value = Loadable.Ready(it) }
+                .onFailure { if (_profile.value !is Loadable.Ready) _profile.value = Loadable.Error(it.message ?: "Failed") }
             if (_played.value !is Loadable.Ready) _played.value = Loadable.Loading
-            _played.value = runCatching { Loadable.Ready(client.recentlyPlayed(15)) }.getOrElse { Loadable.Error(it.message ?: "Failed") }
+            runCatching { client.recentlyPlayed(15) }
+                .onSuccess { _played.value = Loadable.Ready(it) }
+                .onFailure { if (_played.value !is Loadable.Ready) _played.value = Loadable.Error(it.message ?: "Failed") }
         }
     }
 
@@ -183,16 +225,76 @@ class RaRepository(private val client: RaClient, private val store: SettingsStor
         return client.gameProgress(gameId).also { progressCache[gameId] = System.currentTimeMillis() to it }
     }
 
-    /** Known id (from RomM or a previous match), otherwise a title match against RA's game list. */
+    /** Known id (from RomM, manual entry or a previous match), otherwise a fresh match. */
     suspend fun idFor(game: Game, catalog: SystemCatalog): Int? {
         store.userData.value.raIds[game.id]?.let { return it }
         val settings = store.settings.value
         if (!settings.raConfigured || !settings.raMatchTitles) return null
         val console = catalog.meta(game.system).raConsole ?: return null
-        val title = store.userData.value.customTitle[game.id] ?: game.title
-        val id = runCatching { client.matchTitle(console, title) }.getOrNull() ?: return null
-        store.updateUser { it.copy(raIds = it.raIds + (game.id to id)) }
+        val index = runCatching { client.gameIndex(console) }.getOrNull() ?: return null
+        val id = withContext(Dispatchers.IO) { match(game, console, index) }.also { hashes.save() } ?: return null
+        save(mapOf(game.id to id))
         return id
+    }
+
+    /** ROM hash first, like RetroArch; then the user's custom title and the file name. */
+    private fun match(game: Game, console: Int, index: RaGameIndex): Int? =
+        index.byHash(hashes.hashFor(game, console))
+            ?: index.byTitle(store.userData.value.customTitle[game.id])
+            ?: index.byFileName(game.fileName)
+
+    private suspend fun save(found: Map<String, Int>) {
+        if (found.isEmpty()) return
+        // Ids that appeared meanwhile (RomM, manual entry) win over ours.
+        store.updateUser { u -> u.copy(raIds = found + u.raIds) }
+    }
+
+    /**
+     * Matches every local game without a RetroAchievements id in the background, one game list
+     * request per console. Calls while a run is going queue the newest list for the next run.
+     */
+    fun matchLibrary(games: List<Game>) {
+        val s = store.settings.value
+        if (!s.raConfigured || !s.raMatchTitles) return
+        pending.set(games)
+        scope.launch(Dispatchers.IO) {
+            if (!matchMutex.tryLock()) return@launch
+            try {
+                while (true) runMatch(pending.getAndSet(null) ?: break)
+            } finally {
+                matchMutex.unlock()
+            }
+            pending.get()?.let { matchLibrary(it) }
+        }
+    }
+
+    private suspend fun runMatch(games: List<Game>) {
+        val known = store.userData.value.raIds
+        val byConsole = games
+            .filter { !it.remote && it.id !in known && it.id !in tried }
+            .mapNotNull { g -> catalog.meta(g.system).raConsole?.let { it to g } }
+            .groupBy({ it.first }, { it.second })
+        val found = HashMap<String, Int>()
+        try {
+            for ((console, list) in byConsole) {
+                val index = try {
+                    client.gameIndex(console)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    continue // Not marked as tried: the next library change retries.
+                }
+                for (game in list) {
+                    val s = store.settings.value
+                    if (!s.raConfigured || !s.raMatchTitles) return
+                    match(game, console, index)?.let { found[game.id] = it }
+                    tried += game.id
+                    if (found.size >= 25) { save(found.toMap()); found.clear(); hashes.save() }
+                }
+            }
+        } finally {
+            withContext(NonCancellable) { save(found) }
+            hashes.save()
+        }
     }
 }
 

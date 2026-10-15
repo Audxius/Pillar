@@ -36,7 +36,16 @@ import java.util.Locale
 enum class SyncFileState { SYNCED, LOCAL_CHANGED, SERVER_CHANGED, CONFLICT, LOCAL_ONLY, SERVER_ONLY }
 
 @Serializable
-data class SyncConflict(val key: String, val localHash: String, val serverHash: String)
+data class SyncConflict(
+    val key: String,
+    val localHash: String,
+    val serverHash: String,
+    /** When each copy was last written, 0 when unknown (or the copy was deleted). */
+    val localModified: Long = 0,
+    val serverModified: Long = 0,
+    val localSize: Long = -1,
+    val serverSize: Long = -1,
+)
 
 @Serializable
 data class SyncResult(
@@ -273,6 +282,14 @@ class SaveSync(
         runCatching { download(key, dest) }.onFailure { dest.delete(); throw IOException("Couldn't back up the server copy of $key, so it wasn't replaced") }
     }
 
+    /** Last-Modified and size of the server's copy, from a HEAD request; (0, -1) when unknown. */
+    private fun remoteInfo(key: String): Pair<Long, Long> = runCatching {
+        http.newCall(req(url(key)).head().build()).execute().use { r ->
+            if (!r.isSuccessful) 0L to -1L
+            else (r.headers.getDate("Last-Modified")?.time ?: 0L) to (r.header("Content-Length")?.toLongOrNull() ?: -1L)
+        }
+    }.getOrDefault(0L to -1L)
+
     private fun download(key: String, into: File) {
         http.newCall(req(url(key)).get().build()).execute().use { r ->
             check(r.code, "Downloading $key")
@@ -317,15 +334,22 @@ class SaveSync(
     private fun md5(f: LocalSaveFile): String {
         val cacheKey = "${f.size}:${f.modified}"
         state.hashCache[f.key]?.let { if (it.substringBeforeLast(':') == cacheKey) return it.substringAfterLast(':') }
+        val hash = readMd5(f)
+        state = state.copy(hashCache = state.hashCache + (f.key to "$cacheKey:$hash"))
+        return hash
+    }
+
+    private fun readMd5(f: LocalSaveFile): String {
         val digest = MessageDigest.getInstance("MD5")
         context.contentResolver.openInputStream(Saf.docUri(f.tree, f.docId))?.use { input ->
             val buf = ByteArray(256 * 1024)
             while (true) { val n = input.read(buf); if (n < 0) break; digest.update(buf, 0, n) }
         } ?: throw IOException("Can't read ${f.key}")
-        val hash = digest.digest().joinToString("") { "%02x".format(it) }
-        state = state.copy(hashCache = state.hashCache + (f.key to "$cacheKey:$hash"))
-        return hash
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
+
+    /** Hashes for status display only, kept apart from the sync state so a running sync is never overwritten. */
+    private val displayHashes = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun fileMd5(f: File): String {
         val digest = MessageDigest.getInstance("MD5")
@@ -389,9 +413,12 @@ class SaveSync(
         val conflicts = _last.value?.conflicts.orEmpty().map { it.key.lowercase() }.toSet()
         return files.associate { f ->
             val recorded = state.local.entries.firstOrNull { it.key.equals(f.key, true) }?.value
-            val cached = state.hashCache[f.key]
-            val sameAsRecorded = cached != null && recorded != null && cached.substringBeforeLast(':') == "${f.size}:${f.modified}" &&
-                cached.substringAfterLast(':') == recorded
+            // A file sync just wrote has a new timestamp, so hash it again rather than call it changed.
+            val stamp = "${f.size}:${f.modified}"
+            val current = listOfNotNull(state.hashCache[f.key], displayHashes[f.key])
+                .firstOrNull { it.substringBeforeLast(':') == stamp }?.substringAfterLast(':')
+                ?: if (recorded == null) null else runCatching { readMd5(f) }.getOrNull()?.also { displayHashes[f.key] = "$stamp:$it" }
+            val sameAsRecorded = current != null && current == recorded
             f.key to when {
                 f.key.lowercase() in conflicts -> SyncFileState.CONFLICT
                 recorded == null -> SyncFileState.LOCAL_ONLY
@@ -507,7 +534,15 @@ class SaveSync(
                         byKey[a.key.lowercase()]?.let { backup(it); Saf.delete(context.contentResolver, Saf.docUri(it.tree, it.docId)) }
                         setLocal(a.key, ""); delL++
                     }
-                    null -> conflicts += SyncConflict(a.key, a.local, a.server)
+                    null -> {
+                        val local = byKey[a.key.lowercase()]
+                        val (serverTime, serverSize) = if (a.server.isNotEmpty()) remoteInfo(a.key) else 0L to -1L
+                        conflicts += SyncConflict(
+                            a.key, a.local, a.server,
+                            localModified = local?.modified ?: 0, serverModified = serverTime,
+                            localSize = local?.size ?: -1, serverSize = serverSize,
+                        )
+                    }
                 }
             }
         }

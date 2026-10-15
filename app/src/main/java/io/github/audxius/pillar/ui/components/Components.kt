@@ -210,10 +210,9 @@ fun PillarBackground(modifier: Modifier = Modifier) {
             BackgroundStyle.AURORA -> Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
             BackgroundStyle.STYLE -> {
                 StyleBackdrop(primary, palette.secondary, palette.tertiary, settings.animateBackground && settings.animations)
-                // Glassmorphism keeps a faint, heavily blurred hint of the focused game.
-                if (io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.GLASS) {
-                    ArtBackdrop(LocalAmbientArt.current.value, dark, bg, strength = 0.28f)
-                }
+                // The focused game's art shows through, as strongly as the style wants.
+                val art = io.github.audxius.pillar.ui.theme.specFor(io.github.audxius.pillar.ui.theme.LocalStyle.current).artStrength
+                if (art > 0f) ArtBackdrop(LocalAmbientArt.current.value, dark, bg, strength = art, topScrim = if (art >= 0.7f) 0.15f else 0.45f)
             }
             BackgroundStyle.ART -> {
                 Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
@@ -707,7 +706,7 @@ fun BoxScope.Gloss(shape: Shape) {
  * back to whatever is drawn underneath when there's no art.
  */
 @Composable
-private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, strength: Float = 1f) {
+private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, strength: Float = 1f, topScrim: Float = 0.45f) {
     androidx.compose.animation.Crossfade(
         targetState = sources?.firstOrNull()?.let { sources },
         animationSpec = tween(700),
@@ -723,8 +722,8 @@ private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, streng
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        0f to bg.copy(alpha = if (dark) 0.45f else 0.55f),
-                        0.5f to bg.copy(alpha = if (dark) 0.62f else 0.7f),
+                        0f to bg.copy(alpha = if (dark) topScrim else topScrim + 0.1f),
+                        0.5f to bg.copy(alpha = if (dark) topScrim + 0.17f else topScrim + 0.25f),
                         1f to bg.copy(alpha = if (dark) 0.92f else 0.9f),
                     )
                 )

@@ -860,11 +860,11 @@ private fun RaPage() {
     }
     SettingsGroup("Matching") {
         SettingSwitch(
-            "Match games by title",
-            "Look up local games in RetroAchievements' game list. Games downloaded from RomM use RomM's match.",
+            "Match local games",
+            "Find local games on RetroAchievements by ROM hash, like RetroArch, falling back to the title. Games downloaded from RomM use RomM's match.",
             s.raMatchTitles,
         ) { v -> update { it.copy(raMatchTitles = v) } }
-        SettingRow("Forget title matches", "Re-match every game next time it's opened", onClick = {
+        SettingRow("Re-match games", "Forget automatic matches and look every game up again", onClick = {
             scope.launch { graph.store.updateUser { it.copy(raIds = it.raIds.filterKeys { id -> id in it.rommIds }) } }
         })
     }

@@ -29,9 +29,9 @@ class SettingsJsonTest {
             io.github.audxius.pillar.data.WidgetConfig(WidgetType.QUICK_APPS),
         ))
         val normalized = old.normalized()
-        // The removed Quick apps widget is dropped, everything else is offered.
-        assertEquals(WidgetType.entries.size - 1, normalized.homeWidgets.size)
-        assertTrue(normalized.homeWidgets.none { it.type == WidgetType.QUICK_APPS })
+        // Removed widgets are dropped, everything else is offered.
+        assertEquals(WidgetType.entries.size - io.github.audxius.pillar.data.RemovedWidgets.size, normalized.homeWidgets.size)
+        assertTrue(normalized.homeWidgets.none { it.type in io.github.audxius.pillar.data.RemovedWidgets })
         assertTrue(normalized.homeWidgets.drop(1).none { it.enabled })
     }
 }

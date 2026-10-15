@@ -35,17 +35,18 @@ Android 8.0 or newer.
 
 ## Features
 
-- **Built for portrait.** A wide art strip for the selected game, its logo, and a snapping cover
-  carousel sized to fit above the dock. Tap a cover to open its page; Play is right there.
-  Cover tiles stay uniform: art that doesn't match the tile is shown whole in a frame instead of
-  being cropped.
+- **Built for portrait.** Home is every game, most recently played first, as a snapping cover
+  carousel under the focused game's big logo, with its system, when you last played it and
+  whether it has achievements. Tap a cover to open its page; Play is right there. Cover tiles
+  stay uniform: art that doesn't match the tile is shown whole in a frame instead of cropped.
 - **Game pages.** Cover, logo, the emulator it will use right above Play, save files, RomM info
   and every achievement (still to unlock first). Favorite, cover, rename and hide live in the ⋮ menu.
-- **Library.** Search, a platform strip, sort and filters in one screen, with an evenly aligned
-  cover grid.
-- **Three looks.** Glassmorphism (default); Frutiger Aero (Vista-era sky, glossy glass and aqua
-  buttons); and Y2K (Dreamcast, PS2 and Jet Set Radio: light pillars, halftone, hard-shadow
-  panels, Exo 2 type). Each has its own backdrop, panels, buttons and dock.
+- **Library.** Your consoles as cards; pick one to browse its games with search, sort, filters
+  and its default emulator, in an evenly aligned cover grid.
+- **Three looks.** Glassmorphism (default: your game's art behind frosted panels); Frutiger Aero
+  (Vista sky, light rays, bubbles, glossy glass and aqua buttons); and Y2K (PS2 and Dreamcast
+  menus: a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons, Exo 2
+  type). Each has its own backdrop, panels, buttons and dock.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -61,19 +62,21 @@ Android 8.0 or newer.
 - **Saves & sync.** Lists every save file and save state by game. Syncs with the same WebDAV
   server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
-  deletes anything on the server and backs up any save before replacing it.
+  deletes anything on the server and backs up any save before replacing it. When a save changed
+  on both sides, you see how old each copy is and pick which to keep.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
   you, and downloads keep going in the background.
-- **RetroAchievements.** Profile, your games as expandable cards with the achievements you still
-  need listed first, and recent unlocks grouped by game.
-  Local games are matched by title; RomM games use RomM's match. You can also set a game ID by hand.
+- **RetroAchievements.** Profile and your games as expandable cards with the achievements you
+  still need listed first. Local games are matched in the background by ROM hash, like
+  RetroArch, falling back to the title; RomM games use RomM's match. You can also set a game ID
+  by hand.
 - **Customize everything.**
   - Theme: 10 palettes, any accent color, Material You, dark / AMOLED black / light.
   - Fonts: Nunito, Outfit, Space Grotesk, Exo 2, a pixel font, or the system font, plus text size.
   - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
     blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
-  - Feed home layout: 11 widgets (clock, continue playing, platforms, favorites,
+  - Feed home layout: 10 widgets (clock, continue playing, platforms, favorites,
     RetroAchievements, RomM, random pick, stats…) that you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.

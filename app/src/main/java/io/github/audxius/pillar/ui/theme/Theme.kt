@@ -56,7 +56,7 @@ val Palettes = listOf(
     PalettePreset("dmg", "Pocket", Color(0xFF9BBC0F), Color(0xFF6E9A2A), Color(0xFFC4CF8A)),
     PalettePreset("famicom", "Famicom", Color(0xFFE4002B), Color(0xFFD4A84A), Color(0xFFF2E6CE)),
     PalettePreset("aero", "Aero", Color(0xFF1E9BE8), Color(0xFF6CCB3B), Color(0xFF00C2D9)),
-    PalettePreset("y2k", "Dreamcast", Color(0xFFFF7A00), Color(0xFF2E6BFF), Color(0xFFB4FF39)),
+    PalettePreset("y2k", "Millennium", Color(0xFF3FB8FF), Color(0xFFFF7A00), Color(0xFFB4FF39)),
     PalettePreset("mono", "Mono", Color(0xFFE6E6EA), Color(0xFF9A9AA6), Color(0xFFFFFFFF)),
 )
 

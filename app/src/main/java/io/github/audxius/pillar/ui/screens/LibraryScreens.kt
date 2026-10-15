@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -110,39 +112,144 @@ import kotlinx.coroutines.launch
 
 private enum class GameFilter(val label: String) { ALL("All"), LOCAL("On device"), REMOTE("On RomM"), FAVORITES("Favorites"), PLAYED("Played"), UNPLAYED("Not played") }
 
-/**
- * One screen for the whole collection: search, a strip of platforms to switch between, sorting
- * and filters, and a uniform cover grid.
- */
+/** Library tab: every console you have games for. Pick one to browse its games. */
 @Composable
-fun LibraryScreen(initialSystem: String? = null, onBack: (() -> Unit)? = null) {
+fun LibraryScreen() {
+    val graph = LocalGraph.current
+    val nav = LocalNav.current
+    val all = rememberVisibleGames()
+    val systems = rememberOrderedSystems(all)
+    val scan by graph.library.scan.collectAsStateWithLifecycle()
+    val downloads by graph.downloads.states.collectAsStateWithLifecycle()
+    val rommSyncing by graph.rommRepo.syncing.collectAsStateWithLifecycle()
+    var showDownloads by remember { mutableStateOf(false) }
+    val ambient = LocalAmbient.current
+    LaunchedEffect(Unit) { ambient.value = null }
+    if (showDownloads) DownloadsSheet { showDownloads = false }
+
+    LazyVerticalGrid(
+        GridCells.Fixed(2),
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = BottomBarSpace),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column {
+                ScreenHeader(
+                    "Library",
+                    if (all.isEmpty()) null else "${systems.size} systems · ${gamesLabel(all.size)}",
+                ) {
+                    RoundIcon(Icons.Rounded.Search, "Search") { nav.navigate(Routes.SEARCH) }
+                    Spacer(Modifier.width(8.dp))
+                    if (downloads.isNotEmpty()) {
+                        RoundIcon(Icons.Rounded.Download, "Downloads") { showDownloads = true }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    SpinningRefresh(scan.running || rommSyncing) {
+                        graph.library.scanAsync()
+                        graph.rommRepo.refresh(force = true)
+                    }
+                }
+                if (scan.running) {
+                    Text(scan.message, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 8.dp))
+                }
+            }
+        }
+        items(systems, key = { it.first }) { (sys, list) ->
+            PlatformCard(sys, list) { nav.navigate(Routes.platform(sys)) }
+        }
+        if (all.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+            EmptyState(
+                Icons.Rounded.FolderOpen,
+                if (scan.running) "Scanning…" else "No games yet",
+                if (scan.running) scan.message else "Add your ROMs folder in Settings, or connect RomM to see your server's games here.",
+                action = if (scan.running) null else "Choose folder",
+                onAction = { nav.navigate(Routes.settingsPage(SettingsPage.LIBRARY)) },
+            )
+        }
+    }
+}
+
+/** A console in the library: its name, maker and year, game count and a fan of its covers. */
+@Composable
+private fun PlatformCard(system: String, games: List<Game>, onClick: () -> Unit) {
+    val graph = LocalGraph.current
+    val user = LocalUserData.current
+    val meta = graph.catalog.meta(system)
+    val color = systemColor(system)
+    val corner = LocalCorner.current
+    val shape = RoundedCornerShape(corner * 0.8f)
+    // The games you played last stand in for the console; otherwise the first few alphabetically.
+    val picks = remember(games, user.lastPlayed) {
+        games.sortedWith(compareByDescending<Game> { user.lastPlayed[it.id] ?: 0L }.thenBy { it.title.lowercase() }).take(3)
+    }
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().aspectRatio(0.92f)
+            .styledSurface(shape)
+            .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.34f), color.copy(alpha = 0.04f))))
+            .tappable(shape, onClick = onClick),
+    ) {
+        val coverW = maxWidth * 0.42f
+        // Most recent in front, the next two fanned out behind it, bleeding off the bottom edge.
+        listOf(2 to 1f, 1 to -1f, 0 to 0f).forEach { (i, side) ->
+            val g = picks.getOrNull(i) ?: return@forEach
+            GameCover(
+                g,
+                Modifier.align(Alignment.BottomCenter).width(coverW)
+                    .graphicsLayer {
+                        translationX = side * coverW.toPx() * 0.62f
+                        translationY = coverW.toPx() * (if (i == 0) 0.12f else 0.26f)
+                        rotationZ = side * 9f
+                        val s = if (i == 0) 1f else 0.9f
+                        scaleX = s; scaleY = s
+                    },
+                ratio = 0.75f,
+                compact = true,
+            )
+        }
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    systemName(system), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "${games.size}",
+                    style = MaterialTheme.typography.labelLarge, color = Color.White,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(color).padding(horizontal = 9.dp, vertical = 2.dp),
+                )
+            }
+            val sub = listOfNotNull(meta.maker, meta.year?.toString()).joinToString(" · ")
+            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+    }
+}
+
+/** One console's games: search, sort, filters, its emulator and a uniform cover grid. */
+@Composable
+fun PlatformScreen(system: String) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     val all = rememberVisibleGames()
-    val systems = rememberOrderedSystems(all)
-    val scan by graph.library.scan.collectAsStateWithLifecycle()
-    val downloads by graph.downloads.states.collectAsStateWithLifecycle()
-    val rommSyncing by graph.rommRepo.syncing.collectAsStateWithLifecycle()
     val ambient = LocalAmbient.current
+    val sysColor = systemColor(system)
+    LaunchedEffect(system) { ambient.value = sysColor }
 
-    var system by rememberSaveable { mutableStateOf(initialSystem) }
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(GameFilter.ALL) }
     var sortOpen by remember { mutableStateOf(false) }
     var emuSheet by remember { mutableStateOf(false) }
-    var showDownloads by remember { mutableStateOf(false) }
     var quick by remember { mutableStateOf<Game?>(null) }
-    val sysColor = system?.let { systemColor(it) }
-    LaunchedEffect(system) { ambient.value = sysColor }
 
-    val games = remember(all, system, filter, query, settings.sortMode, user) {
+    val mine = remember(all, system) { all.filter { it.system == system } }
+    val games = remember(mine, filter, query, settings.sortMode, user) {
         val q = query.trim().lowercase()
-        val base = all.filter { g ->
-            (system == null || g.system == system) &&
-                (q.isEmpty() || (user.customTitle[g.id] ?: g.title).lowercase().contains(q) || g.fileName.lowercase().contains(q)) &&
+        val base = mine.filter { g ->
+            (q.isEmpty() || (user.customTitle[g.id] ?: g.title).lowercase().contains(q) || g.fileName.lowercase().contains(q)) &&
                 when (filter) {
                     GameFilter.ALL -> true
                     GameFilter.LOCAL -> !g.remote
@@ -154,39 +261,29 @@ fun LibraryScreen(initialSystem: String? = null, onBack: (() -> Unit)? = null) {
         }
         when (settings.sortMode) {
             SortMode.NAME -> base.sortedBy { (user.customTitle[it.id] ?: it.title).lowercase() }
-            SortMode.RECENTLY_PLAYED -> base.sortedByDescending { user.lastPlayed[it.id] ?: 0 }
+            SortMode.RECENTLY_PLAYED -> base.sortedByDescending { user.lastPlayed[it.id] ?: 0L }
             SortMode.RECENTLY_ADDED -> base.sortedByDescending { it.modified }
             SortMode.MOST_PLAYED -> base.sortedByDescending { user.playCount[it.id] ?: 0 }
         }
     }
-    if (showDownloads) DownloadsSheet { showDownloads = false }
 
     LazyVerticalGrid(
         GridCells.Fixed(settings.gridColumns.coerceIn(2, 6)),
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = BottomBarSpace),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 40.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
                 ScreenHeader(
-                    if (system == null) "Library" else graph.catalog.fullName(system!!),
+                    graph.catalog.fullName(system),
                     listOfNotNull(
-                        gamesLabel(if (system == null) all.size else all.count { it.system == system }),
-                        all.count { it.remote && (system == null || it.system == system) }.takeIf { it > 0 }?.let { "$it on RomM" },
+                        gamesLabel(mine.size),
+                        mine.count { it.remote }.takeIf { it > 0 }?.let { "$it on RomM" },
                     ).joinToString(" · "),
-                    onBack = onBack,
-                ) {
-                    if (downloads.isNotEmpty()) {
-                        RoundIcon(Icons.Rounded.Download, "Downloads") { showDownloads = true }
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    SpinningRefresh(scan.running || rommSyncing) {
-                        graph.library.scanAsync()
-                        graph.rommRepo.refresh(force = true)
-                    }
-                }
+                    onBack = { nav.popBackStack() },
+                )
                 // Search filters as you type.
                 Row(
                     Modifier.padding(top = 4.dp).fillMaxWidth().height(48.dp).styledSurface(RoundedCornerShape(50)).padding(horizontal = 14.dp),
@@ -195,7 +292,7 @@ fun LibraryScreen(initialSystem: String? = null, onBack: (() -> Unit)? = null) {
                     Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f)) {
-                        if (query.isEmpty()) Text("Search your games", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                        if (query.isEmpty()) Text("Search ${systemName(system)} games", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
                         androidx.compose.foundation.text.BasicTextField(
                             value = query, onValueChange = { query = it }, singleLine = true,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -207,16 +304,8 @@ fun LibraryScreen(initialSystem: String? = null, onBack: (() -> Unit)? = null) {
                         Icon(Icons.Rounded.Close, "Clear", Modifier.size(32.dp).clip(CircleShape).tappable(CircleShape) { query = "" }.padding(6.dp))
                     }
                 }
-                Spacer(Modifier.height(14.dp))
-                // Platform switcher.
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    item(key = "all") { PlatformPill(null, all.size, system == null) { system = null } }
-                    items(systems, key = { it.first }) { (sys, list) ->
-                        PlatformPill(sys, list.size, system == sys) { system = if (system == sys) null else sys }
-                    }
-                }
                 Spacer(Modifier.height(12.dp))
-                // Sort, filters, and the emulator for the chosen platform.
+                // Sort, the emulator for this console, and filters.
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     item(key = "sort") {
                         Box {
@@ -232,86 +321,45 @@ fun LibraryScreen(initialSystem: String? = null, onBack: (() -> Unit)? = null) {
                             }
                         }
                     }
-                    if (system != null) item(key = "emu") {
+                    item(key = "emu") {
                         val emu = remember(system, settings, user) {
-                            settings.defaultEmulators[system!!]
-                                ?: graph.launcher.automaticCommand(system!!, settings)?.takeIf { graph.launcher.isCommandAvailable(it) }?.label
+                            settings.defaultEmulators[system]
+                                ?: graph.launcher.automaticCommand(system, settings)?.takeIf { graph.launcher.isCommandAvailable(it) }?.label
                         }
-                        StyledChip("Emulator: ${emu ?: "choose"}", false, systemColor(system!!)) { emuSheet = true }
+                        StyledChip("Emulator: ${emu ?: "choose"}", false, sysColor) { emuSheet = true }
                     }
-                    val hasRemote = all.any { it.remote }
+                    val hasRemote = mine.any { it.remote }
                     items(GameFilter.entries.filter { it != GameFilter.ALL && (hasRemote || (it != GameFilter.LOCAL && it != GameFilter.REMOTE)) }, key = { it.name }) { f ->
                         StyledChip(f.label, filter == f) { filter = if (filter == f) GameFilter.ALL else f }
                     }
-                }
-                if (scan.running) {
-                    Text(scan.message, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
                 }
                 Spacer(Modifier.height(4.dp))
             }
         }
         items(games, key = { it.id }) { g ->
-            GameTile(g, sharedKey = "cover-lib-${g.id}", showSystem = system == null, onLongClick = { quick = g }) {
+            GameTile(g, sharedKey = "cover-lib-${g.id}", showSystem = false, onLongClick = { quick = g }) {
                 nav.navigate(Routes.game(g.id, "lib"))
             }
         }
         if (games.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-            if (all.isEmpty()) {
-                EmptyState(
-                    Icons.Rounded.FolderOpen,
-                    if (scan.running) "Scanning…" else "No games yet",
-                    if (scan.running) scan.message else "Add your ROMs folder in Settings, or connect RomM to see your server's games here.",
-                    action = if (scan.running) null else "Choose folder",
-                    onAction = { nav.navigate(Routes.settingsPage(SettingsPage.LIBRARY)) },
-                )
-            } else {
-                Text("Nothing matches.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
-            }
+            Text("Nothing matches.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
         }
     }
 
-    if (emuSheet && system != null) {
-        val sys = system!!
+    if (emuSheet) {
         EmulatorSheet(
-            system = sys,
-            selected = settings.defaultEmulators[sys],
-            title = "Default emulator for ${systemName(sys)}",
+            system = system,
+            selected = settings.defaultEmulators[system],
+            title = "Default emulator for ${systemName(system)}",
             onDismiss = { emuSheet = false },
         ) { label ->
             scope.launch {
-                graph.store.update { s -> s.copy(defaultEmulators = if (label == null) s.defaultEmulators - sys else s.defaultEmulators + (sys to label)) }
+                graph.store.update { s -> s.copy(defaultEmulators = if (label == null) s.defaultEmulators - system else s.defaultEmulators + (system to label)) }
             }
             emuSheet = false
         }
     }
     quick?.let { g -> GameQuickSheet(g, "lib", onDismiss = { quick = null }) }
-}
-
-/** Opens the library already showing one platform (used by the home feed's platform row). */
-@Composable
-fun PlatformScreen(system: String) {
-    val nav = LocalNav.current
-    LibraryScreen(initialSystem = system, onBack = { nav.popBackStack() })
-}
-
-/** A platform in the switcher: its color, short name and game count. */
-@Composable
-private fun PlatformPill(system: String?, count: Int, selected: Boolean, onClick: () -> Unit) {
-    val corner = LocalCorner.current
-    val color = system?.let { systemColor(it) } ?: MaterialTheme.colorScheme.primary
-    val shape = RoundedCornerShape(corner * 0.7f)
-    Column(
-        Modifier.width(92.dp).height(64.dp)
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(lerp(color, Color.White, 0.08f), lerp(color, Color.Black, 0.45f))))
-            .border(if (selected) 2.5.dp else 1.dp, if (selected) Color.White else Color.White.copy(alpha = 0.18f), shape)
-            .tappable(shape, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(if (system == null) "All" else systemName(system), style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("$count", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
-    }
 }
 
 @Composable

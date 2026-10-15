@@ -64,7 +64,6 @@ import io.github.audxius.pillar.data.DownloadState
 import io.github.audxius.pillar.data.Loadable
 import io.github.audxius.pillar.data.RaAchievement
 import io.github.audxius.pillar.data.RaGameProgress
-import io.github.audxius.pillar.data.RaRecentAchievement
 import io.github.audxius.pillar.data.RaRecentGame
 import io.github.audxius.pillar.data.raMedia
 import io.github.audxius.pillar.ui.BottomBarSpace
@@ -161,7 +160,6 @@ fun AchievementsScreen() {
         return
     }
     val profile by graph.ra.profile.collectAsStateWithLifecycle()
-    val recent by graph.ra.recent.collectAsStateWithLifecycle()
     val played by graph.ra.played.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { graph.ra.refresh() }
     var expanded by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -204,21 +202,24 @@ fun AchievementsScreen() {
             }
         }
 
-        (played as? Loadable.Ready)?.value?.takeIf { it.isNotEmpty() }?.let { list ->
-            item { SectionHeader("Your games") }
-            items(list, key = { "g${it.gameId}" }) { g ->
-                RaGameCard(g, expanded = expanded == g.gameId) { expanded = if (expanded == g.gameId) null else g.gameId }
+        item { SectionHeader("Your games") }
+        when (val pl = played) {
+            is Loadable.Ready -> {
+                if (pl.value.isEmpty()) item {
+                    Text("No games played with RetroAchievements yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
+                }
+                items(pl.value, key = { "g${it.gameId}" }) { g ->
+                    RaGameCard(g, expanded = expanded == g.gameId) { expanded = if (expanded == g.gameId) null else g.gameId }
+                }
             }
-        }
-
-        (recent as? Loadable.Ready)?.value?.let { list ->
-            item { SectionHeader("Recent unlocks") }
-            if (list.isEmpty()) item {
-                Text("Nothing in the last two weeks. Go earn some!", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
+            is Loadable.Error -> item {
+                Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 16.dp) {
+                    Text("Couldn't load your games", style = MaterialTheme.typography.titleSmall)
+                    Text(pl.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { graph.ra.refresh(force = true) }) { Text("Try again") }
+                }
             }
-            // One card per game, newest first, instead of one long mixed list.
-            val groups = list.groupBy { it.gameId }.values.sortedByDescending { g -> g.maxOf { it.date } }
-            items(groups, key = { "r${it.first().gameId}" }) { group -> RecentGroup(group) }
+            else -> items(3) { Shimmer(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(78.dp)) }
         }
     }
 }
@@ -231,10 +232,12 @@ private fun RaGameCard(g: RaRecentGame, expanded: Boolean, onToggle: () -> Unit)
     val games by graph.allGames.collectAsStateWithLifecycle()
     val localGame = remember(games, user.raIds, g.gameId) { games.firstOrNull { user.raIds[it.id] == g.gameId } }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
-    // Loaded as soon as the card is shown, so expanding is instant and doesn't jump in size.
+    // Loaded when first opened: fetching every card up front trips RetroAchievements' rate limit.
     var progress by remember { mutableStateOf<RaGameProgress?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(g.gameId) {
+    LaunchedEffect(g.gameId, expanded) {
+        if (!expanded || progress != null) return@LaunchedEffect
+        error = null
         runCatching { graph.ra.progress(g.gameId) }.onSuccess { progress = it }.onFailure { error = it.message }
     }
     Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 0.dp) {
@@ -355,41 +358,6 @@ fun AchievementRow(a: RaAchievement) {
             textAlign = TextAlign.Center,
             modifier = Modifier.clip(RoundedCornerShape(50)).background(Gold.copy(alpha = if (a.earned) 0.16f else 0.06f)).padding(horizontal = 9.dp, vertical = 3.dp),
         )
-    }
-}
-
-@Composable
-private fun RecentGroup(group: List<RaRecentAchievement>) {
-    val first = group.first()
-    Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 12.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(raMedia(first.gameIcon), null, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)))
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(first.gameTitle, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "${first.consoleName} · ${group.size} unlock${if (group.size == 1) "" else "s"} · ${group.sumOf { it.points }} pts",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        group.sortedByDescending { it.date }.forEach { a ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    raMedia(a.badgeUrl), null,
-                    modifier = Modifier.size(42.dp).clip(RoundedCornerShape(10.dp))
-                        .border(if (a.hardcore == 1) 2.dp else 0.dp, if (a.hardcore == 1) Gold else Color.Transparent, RoundedCornerShape(10.dp)),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(a.title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(a.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(raTimeAgo(a.date), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                }
-                Text("${a.points}", style = MaterialTheme.typography.labelLarge, color = Gold)
-            }
-        }
     }
 }
 

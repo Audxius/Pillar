@@ -115,8 +115,8 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val Tabs = listOf(
     Tab(Routes.HOME, "Home", Icons.Rounded.Home, Color(0xFFFF9F43)),
     Tab(Routes.LIBRARY, "Library", Icons.Rounded.GridView, Color(0xFF4D9DFF)),
-    Tab(Routes.SAVES, "Saves", Icons.Rounded.Save, Color(0xFF9B7BFF)),
     Tab(Routes.RA, "Trophies", Icons.Rounded.EmojiEvents, Color(0xFFFFC542)),
+    Tab(Routes.SAVES, "Saves", Icons.Rounded.Save, Color(0xFF9B7BFF)),
     Tab(Routes.SETTINGS, "Settings", Icons.Rounded.Tune, Color(0xFFFF6B9A)),
 )
 

@@ -113,11 +113,50 @@ private data class RaGameRaw(
 )
 
 @Serializable
-private data class RaListedGame(
+internal data class RaListedGame(
     @SerialName("ID") val id: Int = 0,
     @SerialName("Title") val title: String = "",
     @SerialName("NumAchievements") val numAchievements: Int = 0,
+    @SerialName("Hashes") val hashes: List<String> = emptyList(),
 )
+
+/** One console's RetroAchievements games, looked up by ROM hash or, failing that, by title. */
+class RaGameIndex private constructor(games: List<RaListedGame>) {
+    private val hashes = HashMap<String, Int>()
+    private val byName = HashMap<String, Int>()
+    private val titles: ThumbIndex
+
+    init {
+        for (g in games) {
+            // "~Hack~", "~Homebrew~", "~Test Kit~" and subsets never belong to a retail dump.
+            if (g.id == 0 || g.title.startsWith("~") || g.title.contains("[Subset", ignoreCase = true)) continue
+            g.hashes.forEach { hashes.putIfAbsent(it.lowercase(), g.id) }
+            // RA lists alternate names as "Title | Alt Title". The fake extension keeps
+            // ThumbMatch from reading a trailing ".3" as one.
+            g.title.split('|').map { it.trim() }.filter { it.isNotEmpty() }.forEach { byName.putIfAbsent("$it.ra", g.id) }
+        }
+        titles = ThumbIndex(byName.keys)
+    }
+
+    fun byHash(md5: String?): Int? = md5?.let { hashes[it.lowercase()] }
+
+    /** Match for a file name; its tags (region, revision) help pick between close titles. */
+    fun byFileName(fileName: String?): Int? = fileName?.takeIf { it.isNotBlank() }?.let(titles::best)?.let { byName[it] }
+
+    /** Match for a plain title without an extension, like a user's custom title. */
+    fun byTitle(title: String?): Int? = title?.takeIf { it.isNotBlank() }?.let { byFileName("$it.ra") }
+
+    companion object {
+        /** Parses an API_GetGameList response; throws when it isn't a game list. */
+        fun parse(body: String): RaGameIndex = RaGameIndex(
+            try {
+                PillarJson.decodeFromString(ListSerializer(RaListedGame.serializer()), body)
+            } catch (e: IllegalArgumentException) {
+                throw RaException("Unexpected game list from RetroAchievements")
+            }
+        )
+    }
+}
 
 class RaException(message: String) : IOException(message)
 
@@ -127,7 +166,12 @@ class RaClient(
     private val settings: () -> AppSettings,
 ) {
     private val cacheDir = File(context.cacheDir, "ra").apply { mkdirs() }
-    private val titleIndex = ConcurrentHashMap<Int, Map<String, Int>>()
+    private val indexes = ConcurrentHashMap<Int, RaGameIndex>()
+
+    init {
+        // Game lists cached before hashes were requested.
+        cacheDir.listFiles { f -> f.name.matches(Regex("games_\\d+\\.json")) }?.forEach { it.delete() }
+    }
 
     private suspend fun call(endpoint: String, params: Map<String, String>): String = withContext(Dispatchers.IO) {
         val s = settings()
@@ -166,31 +210,19 @@ class RaClient(
         parseGameProgress(call("API_GetGameInfoAndUserProgress.php", mapOf("u" to user, "g" to gameId.toString())))
 
     /**
-     * Finds the RetroAchievements game id for a local game by title. RA's game list per console
-     * is cached on disk for a week to keep API use low.
+     * RA's games with achievements for a console, with their ROM hashes. The list is cached on
+     * disk for a week to keep API use low.
      */
-    suspend fun matchTitle(consoleId: Int, title: String): Int? {
-        val index = titleIndex[consoleId] ?: loadIndex(consoleId).also { titleIndex[consoleId] = it }
-        return index[normalize(title)]
-    }
-
-    private suspend fun loadIndex(consoleId: Int): Map<String, Int> {
-        val file = File(cacheDir, "games_$consoleId.json")
+    suspend fun gameIndex(consoleId: Int): RaGameIndex {
+        indexes[consoleId]?.let { return it }
+        val file = File(cacheDir, "games_h_$consoleId.json")
         val fresh = file.exists() && System.currentTimeMillis() - file.lastModified() < 7L * 24 * 3600 * 1000
-        val body = if (fresh) file.readText() else {
-            call("API_GetGameList.php", mapOf("i" to consoleId.toString(), "f" to "1")).also {
-                runCatching { file.writeText(it) }
-            }
+        val cached = if (fresh) withContext(Dispatchers.IO) { runCatching { RaGameIndex.parse(file.readText()) }.getOrNull() } else null
+        val index = cached ?: run {
+            val body = call("API_GetGameList.php", mapOf("i" to consoleId.toString(), "f" to "1", "h" to "1"))
+            RaGameIndex.parse(body).also { withContext(Dispatchers.IO) { runCatching { file.writeText(body) } } }
         }
-        val list = runCatching { PillarJson.decodeFromString(ListSerializer(RaListedGame.serializer()), body) }.getOrDefault(emptyList())
-        val out = HashMap<String, Int>()
-        for (g in list) {
-            if (g.title.startsWith("~")) continue // hacks, homebrew and test kits
-            out.putIfAbsent(normalize(g.title), g.id)
-            // RA lists alternates as "Title | Alt Title".
-            g.title.split('|').map { it.trim() }.filter { it.isNotEmpty() }.forEach { out.putIfAbsent(normalize(it), g.id) }
-        }
-        return out
+        return index.also { indexes[consoleId] = it }
     }
 
     companion object {

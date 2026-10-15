@@ -33,7 +33,8 @@ enum class WidgetType(val title: String, val description: String) {
     PLATFORMS("Platforms", "Your consoles as a scrolling row"),
     FAVORITES("Favorites", "Games you starred"),
     RA_PROFILE("RetroAchievements profile", "Points, presence and avatar"),
-    RA_RECENT("Recent achievements", "Your latest unlocks"),
+    // Removed in 0.5; kept only so older saved layouts still load.
+    RA_RECENT("Recent achievements", "Removed"),
     RA_PLAYED("RetroAchievements progress", "Completion of recently played games"),
     RECENTLY_ADDED("Recently added", "Newest files in your library"),
     ROMM_LATEST("New on RomM", "Latest additions on your RomM server"),
@@ -46,13 +47,15 @@ enum class WidgetType(val title: String, val description: String) {
 @Serializable
 data class WidgetConfig(val type: WidgetType, val enabled: Boolean = true)
 
+/** Widgets that no longer exist; dropped from saved layouts. */
+val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT)
+
 val DefaultWidgets = listOf(
     WidgetConfig(WidgetType.HEADER),
     WidgetConfig(WidgetType.CONTINUE),
     WidgetConfig(WidgetType.PLATFORMS),
     WidgetConfig(WidgetType.RA_PROFILE),
     WidgetConfig(WidgetType.FAVORITES),
-    WidgetConfig(WidgetType.RA_RECENT),
     WidgetConfig(WidgetType.RECENTLY_ADDED),
     WidgetConfig(WidgetType.ROMM_LATEST),
     WidgetConfig(WidgetType.RA_PLAYED, enabled = false),
@@ -161,9 +164,9 @@ data class AppSettings(
 
     /** Adds widgets introduced in newer versions so old saved layouts still show them in settings. */
     fun normalized(): AppSettings {
-        val kept = homeWidgets.filter { it.type != WidgetType.QUICK_APPS }
+        val kept = homeWidgets.filter { it.type !in RemovedWidgets }
         val known = kept.map { it.type }.toSet()
-        val missing = WidgetType.entries.filter { it !in known && it != WidgetType.QUICK_APPS }.map { WidgetConfig(it, enabled = false) }
+        val missing = WidgetType.entries.filter { it !in known && it !in RemovedWidgets }.map { WidgetConfig(it, enabled = false) }
         var s = copy(homeWidgets = kept + missing)
         // 0.2: game-art background replaced the aurora as the default look.
         if (s.schema < 2) s = s.copy(schema = 2, background = if (s.background == BackgroundStyle.AURORA) BackgroundStyle.ART else s.background)

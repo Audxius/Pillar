@@ -1,5 +1,20 @@
 package io.github.audxius.pillar.ui.screens
 
+import android.text.format.DateUtils
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.rotate
+import io.github.audxius.pillar.data.SyncConflict
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -175,33 +190,15 @@ fun SavesScreen() {
         if (conflicts.isNotEmpty()) {
             item { SectionHeader("Needs your choice · ${conflicts.size}") }
             items(conflicts, key = { "c" + it.key }) { c ->
-                Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 14.dp) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Warning, null, tint = Color(0xFFFFB020))
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(c.key.substringAfterLast('/'), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                "Changed on this device and on the server since the last sync.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                ConflictCard(
+                    c,
+                    onKeep = { device ->
+                        scope.launch {
+                            graph.saveSync.sync(mapOf(c.key to device)); refresh++
+                            snackbar.showSnackbar(if (device) "Kept this device's save" else "Kept the server's save")
                         }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            scope.launch { graph.saveSync.sync(mapOf(c.key to true)); refresh++; snackbar.showSnackbar("Kept this device's save") }
-                        }) { Text("Keep this device") }
-                        OutlinedButton(onClick = {
-                            scope.launch { graph.saveSync.sync(mapOf(c.key to false)); refresh++; snackbar.showSnackbar("Kept the server's save") }
-                        }) { Text("Keep server") }
-                    }
-                    Text(
-                        "The other copy is kept as a backup.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
+                    },
+                )
             }
         }
 
@@ -250,56 +247,199 @@ fun SavesScreen() {
     if (showBackups) BackupsDialog(onDismiss = { showBackups = false; refresh++ })
 }
 
+/** Changed on both sides: shows how old each copy is and lets you keep one. */
+@Composable
+private fun ConflictCard(c: SyncConflict, onKeep: (device: Boolean) -> Unit) {
+    Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 14.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Warning, null, tint = Warn, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(saveLabel(c.key.substringAfterLast('/')).first, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        }
+        Text(
+            saveStem(c.key.substringAfterLast('/')),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(12.dp))
+        // Mark the newer copy when both times are known.
+        val newer = when {
+            c.localModified <= 0 || c.serverModified <= 0 -> null
+            c.localModified > c.serverModified -> true
+            c.serverModified > c.localModified -> false
+            else -> null
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CopyChoice(
+                "This device", Icons.Rounded.PhoneAndroid, c.localHash.isEmpty(), c.localModified, c.localSize, newer == true,
+                Modifier.weight(1f),
+            ) { onKeep(true) }
+            CopyChoice(
+                "Server", Icons.Rounded.Cloud, c.serverHash.isEmpty(), c.serverModified, c.serverSize, newer == false,
+                Modifier.weight(1f),
+            ) { onKeep(false) }
+        }
+        Text(
+            "The copy you don't keep is saved as a backup.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun CopyChoice(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    deleted: Boolean,
+    modified: Long,
+    size: Long,
+    newer: Boolean,
+    modifier: Modifier,
+    onKeep: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier.clip(shape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            .border(1.dp, if (newer) successColor() else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), shape)
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(6.dp))
+            Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            if (newer) {
+                Text(
+                    "Newer", style = MaterialTheme.typography.labelSmall, color = Color.Black,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(successColor()).padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            when {
+                deleted -> "Deleted"
+                modified > 0 -> "Saved ${timeAgo(modified).lowercase()}"
+                else -> "Age unknown"
+            },
+            style = MaterialTheme.typography.titleSmall,
+        )
+        if (!deleted) {
+            Text(
+                listOfNotNull(
+                    modified.takeIf { it > 0 }?.let { DateUtils.formatDateTime(context, it, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_MONTH) },
+                    size.takeIf { it >= 0 }?.let { formatBytes(it) },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(onClick = onKeep, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 8.dp)) {
+            Text(if (deleted) "Keep deleted" else "Keep this", maxLines = 1)
+        }
+    }
+}
+
+/** One game's saves: collapsed to a summary, expands to its files. */
 @Composable
 private fun SaveGroup(game: Game?, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
     val nav = LocalNav.current
-    Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), padding = 12.dp) {
+    var open by rememberSaveable(files.first().key) { mutableStateOf(false) }
+    val chevron by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
+    val shown = files.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }
+    val fileStates = shown.map { states[it.key] }
+    val (statusText, statusColor) = when {
+        SyncFileState.CONFLICT in fileStates -> "Conflict" to Warn
+        SyncFileState.LOCAL_CHANGED in fileStates -> "${fileStates.count { it == SyncFileState.LOCAL_CHANGED }} not synced" to MaterialTheme.colorScheme.primary
+        fileStates.isNotEmpty() && fileStates.all { it == SyncFileState.SYNCED } -> "Synced" to successColor()
+        SyncFileState.LOCAL_ONLY in fileStates -> "Only on this device" to MaterialTheme.colorScheme.onSurfaceVariant
+        else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().then(if (game != null) Modifier.tappable(RoundedCornerShape(12.dp)) { nav.navigate(Routes.game(game.id, "saves")) } else Modifier),
+            Modifier.fillMaxWidth().tappable { open = !open }.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (game != null) {
-                GameCover(game, Modifier.width(44.dp), compact = true)
-                Spacer(Modifier.width(12.dp))
-            }
+            if (game != null) GameCover(game, Modifier.width(52.dp), compact = true)
+            else Box(
+                Modifier.size(52.dp, 69.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.Save, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(game?.let { gameTitle(it) } ?: saveStem(files.first().name), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val saves = files.count { !isState(it.name) }
-                val st = files.count { isState(it.name) && !it.name.endsWith(".png", true) }
+                val saves = shown.count { !isState(it.name) }
+                val st = shown.count { isState(it.name) }
                 Text(
                     listOfNotNull(
                         if (saves > 0) "$saves save${if (saves > 1) "s" else ""}" else null,
                         if (st > 0) "$st state${if (st > 1) "s" else ""}" else null,
-                        "updated ${timeAgo(files.maxOf { it.modified }).lowercase()}",
+                        timeAgo(files.maxOf { it.modified }),
                     ).joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (statusText.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(statusColor))
+                        Spacer(Modifier.width(6.dp))
+                        Text(statusText, style = MaterialTheme.typography.labelMedium, color = statusColor)
+                    }
+                }
+            }
+            Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(chevron), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        AnimatedVisibility(open, enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(), exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()) {
+            Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
+                shown.forEach { f -> SaveFileRow(f, states[f.key], onDelete) }
+                if (game != null) {
+                    TextButton(onClick = { nav.navigate(Routes.game(game.id, "saves")) }) { Text("Open game") }
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        files.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }.forEach { f ->
-            SaveFileRow(f, states[f.key], onDelete)
-        }
+    }
+}
+
+/** "Game.srm" -> ("Save", ...), "Game.state3" -> ("State · slot 3", ...). */
+private fun saveLabel(name: String): Pair<String, Boolean> {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when {
+        name.lowercase().endsWith(".state.auto") -> "Auto state" to true
+        ext == "state" -> "State · slot 0" to true
+        ext.startsWith("state") && ext.drop(5).all(Char::isDigit) -> "State · slot ${ext.drop(5)}" to true
+        ext == "srm" || ext == "sav" -> "Save" to false
+        else -> "${ext.uppercase()} file" to false
     }
 }
 
 @Composable
 fun SaveFileRow(f: LocalSaveFile, state: SyncFileState?, onDelete: (LocalSaveFile) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        val (label, color) = when (state) {
-            SyncFileState.SYNCED -> "Synced" to successColor()
-            SyncFileState.LOCAL_CHANGED -> "Not synced yet" to MaterialTheme.colorScheme.primary
-            SyncFileState.CONFLICT -> "Conflict" to Color(0xFFFFB020)
-            SyncFileState.LOCAL_ONLY -> "Only on this device" to MaterialTheme.colorScheme.onSurfaceVariant
-            else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
-        }
-        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-        Spacer(Modifier.width(10.dp))
+    val (label, color) = when (state) {
+        SyncFileState.SYNCED -> "Synced" to successColor()
+        SyncFileState.LOCAL_CHANGED -> "Not synced yet" to MaterialTheme.colorScheme.primary
+        SyncFileState.CONFLICT -> "Conflict" to Warn
+        SyncFileState.LOCAL_ONLY -> "Only on this device" to MaterialTheme.colorScheme.onSurfaceVariant
+        else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    // Keys look like "saves/Snes9x/Game.srm": the middle part is the emulator core's folder.
+    val parts = f.key.split('/')
+    val core = parts.drop(1).dropLast(1).joinToString("/").ifBlank { null }
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        val (title, isState) = saveLabel(f.name)
+        Icon(
+            if (isState) Icons.Rounded.PhotoCamera else Icons.Rounded.Save, null,
+            Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(color.copy(alpha = 0.14f)).padding(7.dp),
+            tint = color,
+        )
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(f.key.substringAfter('/'), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = MaterialTheme.typography.labelLarge, maxLines = 1)
             Text(
-                listOf(formatBytes(f.size), timeAgo(f.modified), label).filter { it.isNotBlank() }.joinToString(" · "),
+                listOfNotNull(core, formatBytes(f.size), timeAgo(f.modified), label.ifBlank { null }).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         Icon(
@@ -309,6 +449,8 @@ fun SaveFileRow(f: LocalSaveFile, state: SyncFileState?, onDelete: (LocalSaveFil
         )
     }
 }
+
+private val Warn = Color(0xFFFFB020)
 
 @Composable
 private fun BackupsDialog(onDismiss: () -> Unit) {

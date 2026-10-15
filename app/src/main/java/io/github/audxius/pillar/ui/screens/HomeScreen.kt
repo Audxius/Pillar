@@ -159,7 +159,7 @@ private fun HomeFeed() {
                     WidgetType.FAVORITES -> GameRowWidget("Favorites", games.filter { it.id in user.favorites }, "fav") { quick = it }
                     WidgetType.RECENTLY_ADDED -> GameRowWidget("Recently added", games.sortedByDescending { it.modified }.take(16), "new") { quick = it }
                     WidgetType.RA_PROFILE -> RaProfileWidget()
-                    WidgetType.RA_RECENT -> RaRecentWidget()
+                    WidgetType.RA_RECENT -> Unit
                     WidgetType.RA_PLAYED -> RaPlayedWidget()
                     WidgetType.ROMM_LATEST -> RommLatestWidget()
                     WidgetType.RANDOM -> RandomWidget(games)
@@ -517,37 +517,6 @@ private fun RaProfileWidget() {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Shimmer(Modifier.width(120.dp).height(16.dp)); Spacer(Modifier.height(8.dp)); Shimmer(Modifier.width(180.dp).height(12.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RaRecentWidget() {
-    val graph = LocalGraph.current
-    val settings = LocalSettings.current
-    val nav = LocalNav.current
-    if (!settings.raConfigured) return
-    val recent by graph.ra.recent.collectAsStateWithLifecycle()
-    val list = (recent as? Loadable.Ready)?.value ?: return
-    if (list.isEmpty()) return
-    Column {
-        SectionHeader("Recent unlocks", action = "All") { nav.navigate(Routes.RA) }
-        Spacer(Modifier.height(8.dp))
-        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(list.take(15), key = { "${it.id}-${it.date}" }) { a ->
-                Glass(Modifier.width(150.dp), padding = 12.dp) {
-                    AsyncImage(
-                        raMedia(a.badgeUrl), a.title,
-                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp))
-                            .border(2.dp, if (a.hardcore == 1) Color(0xFFFFC94D) else Color.Transparent, RoundedCornerShape(12.dp)),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(a.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(a.gameTitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(4.dp))
-                    Text("${a.points} pts · ${raTimeAgo(a.date)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                 }
             }
         }
