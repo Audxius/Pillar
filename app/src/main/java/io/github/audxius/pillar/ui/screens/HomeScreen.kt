@@ -75,7 +75,6 @@ import io.github.audxius.pillar.data.raMedia
 import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.Routes
-import io.github.audxius.pillar.ui.components.AppIcon
 import io.github.audxius.pillar.ui.components.CoverPlaceholder
 import io.github.audxius.pillar.ui.components.SectionHeader
 import io.github.audxius.pillar.ui.components.ratio
@@ -122,6 +121,11 @@ fun rememberVisibleGames(): List<Game> {
 
 @Composable
 fun HomeScreen() {
+    if (LocalSettings.current.homeLayout == io.github.audxius.pillar.data.HomeLayout.CAROUSEL) HomeCarouselScreen() else HomeFeed()
+}
+
+@Composable
+private fun HomeFeed() {
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val games = rememberVisibleGames()
@@ -159,7 +163,7 @@ fun HomeScreen() {
                     WidgetType.RA_PLAYED -> RaPlayedWidget()
                     WidgetType.ROMM_LATEST -> RommLatestWidget()
                     WidgetType.RANDOM -> RandomWidget(games)
-                    WidgetType.QUICK_APPS -> QuickAppsWidget()
+                    WidgetType.QUICK_APPS -> Unit
                     WidgetType.STATS -> StatsWidget(games)
                 }
                 }
@@ -241,7 +245,6 @@ private fun HeaderWidget() {
                 Text(date, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                RoundIcon(Icons.Rounded.Apps, "Apps") { nav.navigate(Routes.APPS) }
                 RoundIcon(Icons.Rounded.Search, "Search") { nav.navigate(Routes.SEARCH) }
             }
         }
@@ -298,9 +301,7 @@ private fun ContinueWidget(games: List<Game>, isRecent: Boolean) {
             val game = games[page]
             val offset = ((pager.currentPage - page) + pager.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
             val color = systemColor(game.system)
-            val hero = remember(game.id, user.customCover[game.id], user.remoteCover[game.id]) {
-                graph.library.heroCandidates(game, settings, user)
-            }
+            val hero = io.github.audxius.pillar.ui.components.rememberHeroSources(game)
             Box(
                 Modifier
                     .graphicsLayer {
@@ -669,35 +670,6 @@ private fun RandomWidget(games: List<Game>) {
                     nav.navigate(Routes.game(games.random().id, "dice"))
                 }
             }) { Text("Roll") }
-        }
-    }
-}
-
-@Composable
-private fun QuickAppsWidget() {
-    val graph = LocalGraph.current
-    val user = LocalUserData.current
-    val nav = LocalNav.current
-    Column {
-        SectionHeader("Quick apps", action = "Edit") { nav.navigate(Routes.APPS) }
-        Spacer(Modifier.height(8.dp))
-        if (user.pinnedApps.isEmpty()) {
-            TextButton(onClick = { nav.navigate(Routes.APPS) }, modifier = Modifier.padding(horizontal = 12.dp)) {
-                Text("Long-press any app in the Apps drawer to pin it here")
-            }
-        } else {
-            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(user.pinnedApps, key = { it }) { pkg ->
-                    Column(
-                        Modifier.width(72.dp).tappable(RoundedCornerShape(16.dp)) { graph.launcher.launchApp(pkg) }.padding(4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        AppIcon(pkg, Modifier.size(54.dp))
-                        Spacer(Modifier.height(4.dp))
-                        Text(graph.launcher.appLabel(pkg), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
         }
     }
 }

@@ -2,12 +2,9 @@
 
 package io.github.audxius.pillar.ui.settings
 
-import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -42,6 +39,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.ViewModule
@@ -81,6 +79,8 @@ import io.github.audxius.pillar.BuildConfig
 import io.github.audxius.pillar.data.AppFont
 import io.github.audxius.pillar.data.BackgroundStyle
 import io.github.audxius.pillar.data.CoverShape
+import io.github.audxius.pillar.data.CoverStyle
+import io.github.audxius.pillar.data.HomeLayout
 import io.github.audxius.pillar.data.CustomCommand
 import io.github.audxius.pillar.data.OnlineArt
 import io.github.audxius.pillar.data.OrientationMode
@@ -115,9 +115,10 @@ enum class SettingsPage(val title: String, val description: String) {
     LIBRARY("Library", "ROM folders, artwork, scanning"),
     PLATFORMS("Platforms", "Show, hide, rename, recolor and reorder"),
     EMULATORS("Emulators", "Default emulator per system, custom commands"),
+    SAVES("Saves & sync", "Save folders and RetroArch-compatible WebDAV sync"),
     ROMM("RomM", "Connect your RomM server"),
     RA("RetroAchievements", "Profile and achievement progress"),
-    BEHAVIOR("Behavior", "Orientation, haptics, home launcher, backups"),
+    BEHAVIOR("Behavior", "Orientation, haptics, backups"),
     ABOUT("About", "Version, licenses and credits"),
 }
 
@@ -127,6 +128,7 @@ private fun SettingsPage.icon() = when (this) {
     SettingsPage.LIBRARY -> Icons.Rounded.Folder
     SettingsPage.PLATFORMS -> Icons.Rounded.ViewModule
     SettingsPage.EMULATORS -> Icons.Rounded.SportsEsports
+    SettingsPage.SAVES -> Icons.Rounded.Save
     SettingsPage.ROMM -> Icons.Rounded.Cloud
     SettingsPage.RA -> Icons.Rounded.EmojiEvents
     SettingsPage.BEHAVIOR -> Icons.Rounded.TouchApp
@@ -154,6 +156,7 @@ fun SettingsScreen(page: SettingsPage?) {
                 SettingsPage.LIBRARY -> LibraryPage()
                 SettingsPage.PLATFORMS -> PlatformsPage()
                 SettingsPage.EMULATORS -> EmulatorsPage()
+                SettingsPage.SAVES -> SavesPage()
                 SettingsPage.ROMM -> RommPage()
                 SettingsPage.RA -> RaPage()
                 SettingsPage.BEHAVIOR -> BehaviorPage()
@@ -279,7 +282,7 @@ private fun AppearancePage() {
     SettingsGroup("Background") {
         SettingChoice(
             "Style",
-            listOf(BackgroundStyle.AURORA to "Aurora", BackgroundStyle.GRADIENT to "Gradient", BackgroundStyle.SOLID to "Solid", BackgroundStyle.IMAGE to "Image"),
+            listOf(BackgroundStyle.ART to "Game art", BackgroundStyle.AURORA to "Aurora", BackgroundStyle.GRADIENT to "Gradient", BackgroundStyle.SOLID to "Solid", BackgroundStyle.IMAGE to "Image"),
             s.background,
         ) { b ->
             if (b == BackgroundStyle.IMAGE && s.backgroundImageUri == null) pickImage.launch(arrayOf("image/*"))
@@ -292,7 +295,7 @@ private fun AppearancePage() {
             }
             SettingSlider("Dim", s.backgroundDim, 0f..0.9f, label = { "${(it * 100).toInt()}%" }) { v -> update { it.copy(backgroundDim = v) } }
         }
-        if (s.background == BackgroundStyle.AURORA) {
+        if (s.background == BackgroundStyle.AURORA || s.background == BackgroundStyle.ART) {
             SettingSwitch("Animate", "Slowly drifting colors", s.animateBackground) { v -> update { it.copy(animateBackground = v) } }
         }
         SettingSwitch("Ambient color", "Tint the background with the current platform or game", s.ambientColor) { v -> update { it.copy(ambientColor = v) } }
@@ -301,6 +304,13 @@ private fun AppearancePage() {
 
     SettingsGroup("Shapes & layout") {
         SettingSlider("Corner roundness", s.cornerRadius.toFloat(), 0f..36f, label = { "${it.toInt()} dp" }) { v -> update { it.copy(cornerRadius = v.toInt()) } }
+        SettingChoice(
+            "Cover art",
+            listOf(CoverStyle.BOXART to "Box art", CoverStyle.GRID to "SteamGridDB covers", CoverStyle.SQUARE to "Square icons"),
+            s.coverStyle,
+            description = "SteamGridDB options need an API key (Settings → Library). Square icons look best with the square shape.",
+        ) { c -> update { it.copy(coverStyle = c, coverShape = if (c == CoverStyle.SQUARE) CoverShape.SQUARE else it.coverShape) } }
+        SettingSwitch("Crop to fill", "Off shows the whole image over a blurred backdrop", s.coverCrop) { v -> update { it.copy(coverCrop = v) } }
         SettingChoice(
             "Cover shape",
             listOf(CoverShape.BOX to "Box (3:4)", CoverShape.SQUARE to "Square", CoverShape.WIDE to "Wide (4:3)"),
@@ -324,6 +334,14 @@ private fun HomePage() {
     val s = LocalSettings.current
     val update = rememberSettingsUpdater()
     var name by remember { mutableStateOf(s.greetingName) }
+    SettingsGroup("Layout") {
+        SettingChoice(
+            "Home style",
+            listOf(HomeLayout.CAROUSEL to "Carousel", HomeLayout.FEED to "Widget feed"),
+            s.homeLayout,
+            description = "Carousel: full-screen art with a cover carousel. Feed: scrolling widgets you arrange below.",
+        ) { l -> update { it.copy(homeLayout = l) } }
+    }
     SettingsGroup("Greeting") {
         SettingField("Your name", name, { name = it; update { st -> st.copy(greetingName = it.trim()) } }, placeholder = "Shown in the greeting")
         SettingSwitch("24-hour clock", null, s.clock24h) { v -> update { it.copy(clock24h = v) } }
@@ -454,6 +472,27 @@ private fun LibraryPage() {
                 }
             })
         }
+    }
+
+    SettingsGroup("SteamGridDB") {
+        var key by remember { mutableStateOf(s.sgdbKey) }
+        var sgdbStatus by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+        Text(
+            "Optional. Adds polished covers, square icons, wide backgrounds and logos for most games. Get a free key at steamgriddb.com → Preferences → API.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+        SettingField("API key", key, { key = it }, secret = true)
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = {
+                scope.launch {
+                    graph.store.update { it.copy(sgdbKey = key.trim()) }
+                    sgdbStatus = if (key.isBlank()) null else if (graph.artwork.testSgdb()) "Key works" to true else "SteamGridDB rejected this key" to false
+                }
+            }) { Text("Save & test") }
+        }
+        sgdbStatus?.let { (m, ok) -> StatusLine(m, ok) }
+        SettingRow("Refresh all artwork", "Look every game up again", onClick = { graph.artwork.reset() })
     }
 
     SettingsGroup("Downloads") {
@@ -782,10 +821,6 @@ private fun BehaviorPage() {
     val context = LocalContext.current
     val snackbar = LocalSnackbar.current
     val scope = rememberCoroutineScope()
-    val alias = remember { ComponentName(context.packageName, "io.github.audxius.pillar.HomeLauncher") }
-    var homeEnabled by remember {
-        mutableStateOf(context.packageManager.getComponentEnabledSetting(alias) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
-    }
     var includeSecrets by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -816,21 +851,6 @@ private fun BehaviorPage() {
     SettingsGroup("Feedback") {
         SettingSwitch("Haptics", "Subtle vibration on taps", s.haptics) { v -> update { it.copy(haptics = v) } }
         SettingSwitch("Click sounds", "System click sound on taps", s.uiSounds) { v -> update { it.copy(uiSounds = v) } }
-    }
-    SettingsGroup("Launcher") {
-        SettingSwitch(
-            "Use as home screen",
-            "Lets you pick Pillar as your Android launcher, like a handheld frontend",
-            homeEnabled,
-        ) { v ->
-            context.packageManager.setComponentEnabledSetting(
-                alias,
-                if (v) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP,
-            )
-            homeEnabled = v
-            if (v) runCatching { context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        }
     }
     SettingsGroup("Backup") {
         SettingSwitch("Include passwords and keys", "Only turn on for backups you keep private", includeSecrets) { includeSecrets = it }
@@ -866,4 +886,68 @@ private fun AboutPage() {
         overflow = TextOverflow.Clip,
         modifier = Modifier.padding(24.dp),
     )
+}
+
+// ---- Saves & sync --------------------------------------------------------------------------
+
+@Composable
+private fun SavesPage() {
+    val graph = LocalGraph.current
+    val s = LocalSettings.current
+    val update = rememberSettingsUpdater()
+    val scope = rememberCoroutineScope()
+    var url by remember { mutableStateOf(s.webdavUrl) }
+    var user by remember { mutableStateOf(s.webdavUser) }
+    var pass by remember { mutableStateOf(s.webdavPassword) }
+    var status by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    val pickSaves = rememberFolderPicker { uri -> update { it.copy(savesDir = uri.toString()) } }
+    val pickStates = rememberFolderPicker { uri -> update { it.copy(statesDir = uri.toString()) } }
+
+    SettingsGroup("How it works") {
+        Text(
+            "Pillar syncs the same folders and WebDAV server as RetroArch's Cloud Sync, using RetroArch's own manifest format, so the two never fight. It syncs every time you open Pillar and when you come back from a game.\n\n" +
+                "1. In RetroArch: Settings → Directory → set Save Files and Save States to shared folders, e.g. /storage/emulated/0/RetroArch/saves and …/states (Android blocks other apps from RetroArch's private folder).\n" +
+                "2. Pick those same folders below.\n" +
+                "3. Enter the WebDAV address, username and password you use in RetroArch → Settings → Cloud Sync. For RomM that's https://your-romm/api/sync/retroarch with your RomM login.\n\n" +
+                "Pillar never deletes anything on the server. Before it replaces a save (on the server or here) it keeps a backup you can restore from the Saves tab.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(14.dp),
+        )
+    }
+    SettingsGroup("Folders") {
+        SettingRow("Save files", s.savesDir?.let { Saf.describeTree(Uri.parse(it)) } ?: "Not set", Icons.Rounded.Folder, onClick = pickSaves)
+        SettingRow("Save states", s.statesDir?.let { Saf.describeTree(Uri.parse(it)) } ?: "Not set (optional)", Icons.Rounded.Folder, onClick = pickStates)
+    }
+    SettingsGroup("WebDAV server") {
+        if (s.rommConfigured) {
+            SettingRow(
+                "Use my RomM server",
+                "Fills in RomM's RetroArch sync address and your RomM login",
+                Icons.Rounded.Cloud,
+                onClick = {
+                    url = s.rommUrl.trim().trimEnd('/') + "/api/sync/retroarch"
+                    user = s.rommUser
+                    pass = s.rommPassword
+                },
+            )
+        }
+        SettingField("Address", url, { url = it }, placeholder = "https://cloud.example.com/remote.php/dav/files/me/retroarch", keyboard = androidx.compose.ui.text.input.KeyboardType.Uri)
+        SettingField("Username", user, { user = it })
+        SettingField("Password", pass, { pass = it }, secret = true)
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(enabled = !testing && url.isNotBlank(), onClick = {
+                scope.launch {
+                    graph.store.update { it.copy(webdavUrl = url.trim(), webdavUser = user.trim(), webdavPassword = pass) }
+                    testing = true
+                    status = runCatching { graph.saveSync.testConnection() }.fold({ it to true }, { (it.message ?: "Couldn't connect") to false })
+                    testing = false
+                }
+            }) { Text("Save & test") }
+            Spacer(Modifier.width(12.dp))
+            if (testing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+        }
+        status?.let { (msg, ok) -> StatusLine(msg, ok) }
+        SettingSwitch("Sync when Pillar opens", "Also runs when you return from a game", s.syncOnOpen) { v -> update { it.copy(syncOnOpen = v) } }
+    }
 }

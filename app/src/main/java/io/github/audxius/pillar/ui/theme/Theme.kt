@@ -66,6 +66,8 @@ val LocalSettings = staticCompositionLocalOf { AppSettings() }
 val LocalUserData = staticCompositionLocalOf { UserData() }
 /** Color that tints the animated background, set by the platform or game on screen. */
 val LocalAmbient = staticCompositionLocalOf<MutableState<Color?>> { mutableStateOf(null) }
+/** Art (image sources) of the game currently in focus, used by the game-art background. */
+val LocalAmbientArt = staticCompositionLocalOf<MutableState<List<String>?>> { mutableStateOf(null) }
 val LocalCorner = staticCompositionLocalOf { 22.dp }
 val LocalPalette = staticCompositionLocalOf { Palettes.first() }
 val LocalIsDark = staticCompositionLocalOf { true }
@@ -207,6 +209,7 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         extraLarge = RoundedCornerShape(corner * 1.3f),
     )
     val ambient = remember { mutableStateOf<Color?>(null) }
+    val ambientArt = remember { mutableStateOf<List<String>?>(null) }
     val density = LocalDensity.current
     // The pixel font renders much larger than the others at the same size.
     val fontScale = settings.textScale * (if (settings.font == AppFont.PIXEL) 0.72f else 1f)
@@ -215,6 +218,7 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         LocalSettings provides settings,
         LocalUserData provides user,
         LocalAmbient provides ambient,
+        LocalAmbientArt provides ambientArt,
         LocalCorner provides corner,
         LocalPalette provides effectivePalette,
         LocalIsDark provides dark,

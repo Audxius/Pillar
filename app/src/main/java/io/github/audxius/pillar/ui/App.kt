@@ -26,10 +26,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cloud
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
@@ -75,7 +78,6 @@ import io.github.audxius.pillar.ui.components.LocalSharedScope
 import io.github.audxius.pillar.ui.components.PillarBackground
 import io.github.audxius.pillar.ui.components.tappable
 import io.github.audxius.pillar.ui.screens.AchievementsScreen
-import io.github.audxius.pillar.ui.screens.AppsScreen
 import io.github.audxius.pillar.ui.screens.GameDetailScreen
 import io.github.audxius.pillar.ui.screens.HomeScreen
 import io.github.audxius.pillar.ui.screens.LibraryScreen
@@ -84,6 +86,7 @@ import io.github.audxius.pillar.ui.screens.PlatformScreen
 import io.github.audxius.pillar.ui.screens.RommRomScreen
 import io.github.audxius.pillar.ui.screens.RommPlatformScreen
 import io.github.audxius.pillar.ui.screens.RommScreen
+import io.github.audxius.pillar.ui.screens.SavesScreen
 import io.github.audxius.pillar.ui.screens.SearchScreen
 import io.github.audxius.pillar.ui.settings.SettingsPage
 import io.github.audxius.pillar.ui.settings.SettingsScreen
@@ -99,9 +102,9 @@ object Routes {
     const val LIBRARY = "library"
     const val ROMM = "romm"
     const val RA = "ra"
+    const val SAVES = "saves"
     const val SETTINGS = "settings"
     const val SEARCH = "search"
-    const val APPS = "apps"
     const val ONBOARDING = "onboarding"
     fun platform(system: String) = "platform/${Uri.encode(system)}"
     fun game(id: String, src: String = "x") = "game?id=${Uri.encode(id)}&src=${Uri.encode(src)}"
@@ -110,14 +113,15 @@ object Routes {
     fun settingsPage(page: SettingsPage) = "settings/${page.name}"
 }
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector)
+private data class Tab(val route: String, val label: String, val icon: ImageVector, val color: Color)
 
 private val Tabs = listOf(
-    Tab(Routes.HOME, "Home", Icons.Rounded.Home),
-    Tab(Routes.LIBRARY, "Library", Icons.Rounded.GridView),
-    Tab(Routes.ROMM, "RomM", Icons.Rounded.Cloud),
-    Tab(Routes.RA, "Trophies", Icons.Rounded.EmojiEvents),
-    Tab(Routes.SETTINGS, "Settings", Icons.Rounded.Tune),
+    Tab(Routes.HOME, "Home", Icons.Rounded.Home, Color(0xFFFF9F43)),
+    Tab(Routes.LIBRARY, "Library", Icons.Rounded.GridView, Color(0xFF4D9DFF)),
+    Tab(Routes.ROMM, "RomM", Icons.Rounded.Cloud, Color(0xFF2ED47A)),
+    Tab(Routes.SAVES, "Saves", Icons.Rounded.Save, Color(0xFF9B7BFF)),
+    Tab(Routes.RA, "Trophies", Icons.Rounded.EmojiEvents, Color(0xFFFFC542)),
+    Tab(Routes.SETTINGS, "Settings", Icons.Rounded.Tune, Color(0xFFFF6B9A)),
 )
 
 val LocalNav = compositionLocalOf<NavHostController> { error("No nav") }
@@ -213,9 +217,9 @@ private fun PillarNavHost(nav: NavHostController, start: String) {
         composable(Routes.LIBRARY, content = scoped { LibraryScreen() })
         composable(Routes.ROMM, content = scoped { RommScreen() })
         composable(Routes.RA, content = scoped { AchievementsScreen() })
+        composable(Routes.SAVES, content = scoped { SavesScreen() })
         composable(Routes.SETTINGS, content = scoped { SettingsScreen(null) })
         composable(Routes.SEARCH, content = scoped { SearchScreen() })
-        composable(Routes.APPS, content = scoped { AppsScreen() })
         composable(
             "settings/{page}",
             arguments = listOf(navArgument("page") { type = NavType.StringType }),
@@ -273,28 +277,33 @@ private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .fillMaxWidth()
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (settings.glassCards) 0.86f else 1f))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (settings.glassCards) 0.9f else 1f))
             .border(1.dp, if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f), shape)
             .padding(6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Tabs.forEach { tab ->
             val selected = current == tab.route
-            val bg by animateColorAsState(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent, label = "tabBg",
-            )
-            val fg by animateColorAsState(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, label = "tabFg",
-            )
+            // Each tab has its own color, like a handheld's home-menu dock.
+            val bubble by animateColorAsState(if (selected) tab.color else tab.color.copy(alpha = 0.14f), label = "tabBubble")
+            val glyph by animateColorAsState(if (selected) Color.White else tab.color, label = "tabGlyph")
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(24.dp)).background(bg)
-                    .tappable(RoundedCornerShape(24.dp)) { onSelect(tab.route) }
-                    .padding(vertical = if (settings.navLabels) 8.dp else 14.dp),
+                Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
+                    .tappable(RoundedCornerShape(20.dp)) { onSelect(tab.route) }
+                    .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(tab.icon, tab.label, tint = fg, modifier = Modifier.size(24.dp))
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(bubble)
+                        .then(if (selected) Modifier.border(1.5.dp, Color.White.copy(alpha = 0.5f), CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(tab.icon, tab.label, tint = glyph, modifier = Modifier.size(22.dp)) }
                 if (settings.navLabels) {
-                    Text(tab.label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        tab.label, style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -315,9 +324,13 @@ fun rememberGameLauncher(): (Game, EmuCommand?) -> Unit {
             if (cmd == null) {
                 scope.launch { snackbar.showSnackbar("No emulator is set up for ${graph.catalog.fullName(game.system)}") }
             } else {
-                when (val r = graph.launcher.launch(game, cmd)) {
-                    LaunchResult.Started -> graph.markPlayed(game)
-                    is LaunchResult.Failed -> scope.launch { snackbar.showSnackbar(r.message) }
+                scope.launch {
+                    // Never start a game while its save might still be downloading.
+                    graph.saveSync.awaitIdle()
+                    when (val r = graph.launcher.launch(game, cmd)) {
+                        LaunchResult.Started -> graph.markPlayed(game)
+                        is LaunchResult.Failed -> snackbar.showSnackbar(r.message)
+                    }
                 }
             }
         }

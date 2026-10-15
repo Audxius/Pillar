@@ -94,6 +94,7 @@ import io.github.audxius.pillar.data.BackgroundStyle
 import io.github.audxius.pillar.data.CoverShape
 import io.github.audxius.pillar.data.Game
 import io.github.audxius.pillar.ui.theme.LocalAmbient
+import io.github.audxius.pillar.ui.theme.LocalAmbientArt
 import io.github.audxius.pillar.ui.theme.LocalCorner
 import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalIsDark
@@ -198,6 +199,10 @@ fun PillarBackground(modifier: Modifier = Modifier) {
                 }
             }
             BackgroundStyle.AURORA -> Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
+            BackgroundStyle.ART -> {
+                Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
+                ArtBackdrop(LocalAmbientArt.current.value, dark, bg)
+            }
         }
     }
 }
@@ -266,6 +271,8 @@ fun MultiImage(
     sources: List<String>,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    /** Show the whole image over a blurred, darkened copy of itself instead of cropping. */
+    fit: Boolean = false,
     onColor: ((Color) -> Unit)? = null,
     fallback: @Composable BoxScope.() -> Unit,
 ) {
@@ -277,10 +284,21 @@ fun MultiImage(
         if (index < sources.size) {
             val src = sources[index]
             var bitmapForColor by remember(src) { mutableStateOf<Bitmap?>(null) }
+            if (fit && loaded) {
+                AsyncImage(
+                    model = src,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize()
+                        .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(18.dp) else Modifier)
+                        .graphicsLayer { alpha = 0.85f },
+                )
+                Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.35f)))
+            }
             AsyncImage(
                 model = ImageRequest.Builder(context).data(src).apply { if (onColor != null) allowHardware(false) }.build(),
                 contentDescription = null,
-                contentScale = contentScale,
+                contentScale = if (fit) ContentScale.Fit else contentScale,
                 modifier = Modifier.matchParentSize(),
                 onSuccess = { state ->
                     loaded = true
@@ -316,8 +334,13 @@ fun systemName(system: String): String {
         ?: graph.catalog.meta(system).short
 }
 
+/** Custom name, else the matched database title (proper spelling and casing), else the file name. */
 @Composable
-fun gameTitle(game: Game): String = LocalUserData.current.customTitle[game.id] ?: game.title
+fun gameTitle(game: Game): String {
+    LocalUserData.current.customTitle[game.id]?.let { return it }
+    val matched = rememberArt(game)?.matchedName
+    return matched?.let { io.github.audxius.pillar.data.LibraryRepository.cleanTitle("$it.x") } ?: game.title
+}
 
 /** Placeholder cover: platform-colored gradient with a big watermark and the title. */
 @Composable
@@ -358,17 +381,15 @@ fun GameCover(
     ratio: Float? = null,
     compact: Boolean = false,
 ) {
-    val graph = LocalGraph.current
     val settings = LocalSettings.current
     val user = LocalUserData.current
-    val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
-    val sources = remember(game.id, settings.onlineCovers, settings.onlineArt, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
-        graph.library.coverCandidates(game, settings, user)
-    }
+    val sources = rememberCoverSources(game)
     val title = gameTitle(game)
     val r = ratio ?: settings.coverShape.ratio()
-    Box(modifier.aspectRatio(r).sharedCover(sharedKey).clip(RoundedCornerShape(LocalCorner.current * 0.7f))) {
-        MultiImage(sources, Modifier.matchParentSize()) { CoverPlaceholder(title, game.system, compact) }
+    val shape = RoundedCornerShape(LocalCorner.current * 0.7f)
+    Box(modifier.aspectRatio(r).sharedCover(sharedKey).clip(shape)) {
+        MultiImage(sources, Modifier.matchParentSize(), fit = !settings.coverCrop) { CoverPlaceholder(title, game.system, compact) }
+        Gloss(shape)
         if (game.id in user.favorites) {
             Box(
                 Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape)
@@ -504,15 +525,6 @@ fun LinearMeter(progress: Float, modifier: Modifier = Modifier, color: Color = M
 }
 
 @Composable
-fun AppIcon(pkg: String, modifier: Modifier = Modifier) {
-    val graph = LocalGraph.current
-    val bmp by produceState<Bitmap?>(null, pkg) { value = graph.apps.icon(pkg) }
-    Box(modifier) {
-        bmp?.let { Image(it.asImageBitmap(), null, Modifier.matchParentSize()) }
-    }
-}
-
-@Composable
 fun EmptyState(
     icon: ImageVector,
     title: String,
@@ -591,3 +603,78 @@ fun Modifier.fadeBottom(start: Float = 0.45f): Modifier = this
 /** Green that stays readable on both dark and light backgrounds. */
 @Composable
 fun successColor(): Color = if (LocalIsDark.current) Color(0xFF4ADE80) else Color(0xFF15803D)
+
+/** Artwork known for a game; asks the artwork repository to look it up the first time it's shown. */
+@Composable
+fun rememberArt(game: Game): io.github.audxius.pillar.data.ArtSet? {
+    val graph = LocalGraph.current
+    val all by graph.artwork.art.collectAsStateWithLifecycle()
+    val settings = LocalSettings.current
+    LaunchedEffect(game.id, settings.sgdbKey, settings.onlineCovers) { graph.artwork.ensure(game) }
+    return all[game.id]
+}
+
+@Composable
+fun rememberCoverSources(game: Game): List<String> {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    val user = LocalUserData.current
+    val art = rememberArt(game)
+    val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
+    return remember(game.id, art, settings.coverStyle, settings.onlineCovers, settings.onlineArt, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
+        graph.library.coverCandidates(game, settings, user, art)
+    }
+}
+
+@Composable
+fun rememberHeroSources(game: Game): List<String> {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    val user = LocalUserData.current
+    val art = rememberArt(game)
+    val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
+    return remember(game.id, art, settings.coverStyle, settings.onlineCovers, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
+        graph.library.heroCandidates(game, settings, user, art)
+    }
+}
+
+/** Glassy highlight and hairline rim that give tiles a polished, console-menu look. */
+@Composable
+fun BoxScope.Gloss(shape: Shape) {
+    Box(
+        Modifier.matchParentSize()
+            .background(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.16f), 0.35f to Color.Transparent))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.08f))), shape)
+    )
+}
+
+/**
+ * Blurred, dimmed game art behind everything, crossfading as the focused game changes. Falls
+ * back to whatever is drawn underneath when there's no art.
+ */
+@Composable
+private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color) {
+    androidx.compose.animation.Crossfade(
+        targetState = sources?.firstOrNull()?.let { sources },
+        animationSpec = tween(700),
+        label = "artBackdrop",
+    ) { current ->
+        if (current == null) return@Crossfade
+        Box(Modifier.fillMaxSize()) {
+            MultiImage(
+                current,
+                Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }
+                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(28.dp) else Modifier),
+            ) {}
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to bg.copy(alpha = if (dark) 0.45f else 0.55f),
+                        0.5f to bg.copy(alpha = if (dark) 0.62f else 0.7f),
+                        1f to bg.copy(alpha = if (dark) 0.92f else 0.9f),
+                    )
+                )
+            )
+        }
+    }
+}

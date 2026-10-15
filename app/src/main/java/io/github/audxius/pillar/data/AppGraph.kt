@@ -50,7 +50,8 @@ class AppGraph(val context: Context) {
     val ra = RaRepository(raClient, store, scope)
     val rommRepo = RommRepository(romm, store, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
-    val apps = AppsRepository(context, scope)
+    val artwork = ArtworkRepository(context, http, catalog, store, scope)
+    val saveSync = SaveSync(context, http, store, scope)
 
     fun markPlayed(game: Game) {
         scope.launch {
@@ -155,27 +156,3 @@ class RommRepository(private val client: RommClient, private val store: Settings
     }
 }
 
-data class InstalledApp(val packageName: String, val label: String)
-
-class AppsRepository(private val context: Context, private val scope: CoroutineScope) {
-    private val _apps = MutableStateFlow<List<InstalledApp>>(emptyList())
-    val apps: StateFlow<List<InstalledApp>> = _apps.asStateFlow()
-    private val icons = LruCache<String, Bitmap>(120)
-
-    fun refresh() {
-        scope.launch(Dispatchers.IO) {
-            val pm = context.packageManager
-            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            _apps.value = pm.queryIntentActivities(intent, 0)
-                .map { InstalledApp(it.activityInfo.packageName, it.loadLabel(pm).toString()) }
-                .filter { it.packageName != context.packageName }
-                .distinctBy { it.packageName }
-                .sortedBy { it.label.lowercase() }
-        }
-    }
-
-    suspend fun icon(pkg: String): Bitmap? = icons.get(pkg) ?: withContext(Dispatchers.IO) {
-        runCatching { context.packageManager.getApplicationIcon(pkg).toBitmap(144, 144) }.getOrNull()
-            ?.also { icons.put(pkg, it) }
-    }
-}

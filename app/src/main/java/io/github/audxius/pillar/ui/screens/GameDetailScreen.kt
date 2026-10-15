@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import io.github.audxius.pillar.data.Game
 import io.github.audxius.pillar.data.LibraryRepository
@@ -75,6 +76,8 @@ import io.github.audxius.pillar.data.RommRom
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.Glass
+import io.github.audxius.pillar.ui.components.rememberArt
+import io.github.audxius.pillar.ui.components.rememberHeroSources
 import io.github.audxius.pillar.ui.components.fadeBottom
 import io.github.audxius.pillar.ui.components.MultiImage
 import io.github.audxius.pillar.ui.components.Pill
@@ -128,8 +131,11 @@ private fun GameDetail(game: Game, src: String) {
     var accent by remember { mutableStateOf(sysColor) }
     LaunchedEffect(game.id) { ambient.value = sysColor }
 
-    val hero = remember(game.id, user.customCover[game.id], user.remoteCover[game.id]) { graph.library.heroCandidates(game, settings, user) }
-    val logo = remember(game.id) { graph.library.logo(game) }
+    val art = rememberArt(game)
+    val hero = rememberHeroSources(game)
+    val logo = remember(game.id, art) { graph.library.logo(game, art) }
+    val ambientArt = io.github.audxius.pillar.ui.theme.LocalAmbientArt.current
+    LaunchedEffect(game.id, hero) { ambientArt.value = hero }
     val fav = game.id in user.favorites
     val command = remember(game.id, settings, user) { graph.launcher.selectCommand(game, settings, user) }
 
@@ -241,6 +247,7 @@ private fun GameDetail(game: Game, src: String) {
                     }
                 }
 
+                GameSaves(game)
                 user.rommIds[game.id]?.let { rommId -> RommInfo(rommId) }
                 if (settings.raConfigured) AchievementsSection(game)
 
@@ -502,5 +509,37 @@ private fun AchievementsSection(game: Game) {
             },
             dismissButton = { TextButton(onClick = { manual = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** This game's save files and states from the synced folders. */
+@Composable
+private fun GameSaves(game: Game) {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    val nav = LocalNav.current
+    if (settings.savesDir == null && settings.statesDir == null) return
+    val last by graph.saveSync.last.collectAsStateWithLifecycle()
+    var files by remember { mutableStateOf<List<io.github.audxius.pillar.data.LocalSaveFile>>(emptyList()) }
+    var states by remember { mutableStateOf<Map<String, io.github.audxius.pillar.data.SyncFileState>>(emptyMap()) }
+    LaunchedEffect(game.id, last) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val stem = game.baseName.lowercase()
+            val mine = graph.saveSync.listLocal().filter {
+                val n = it.name.lowercase().removeSuffix(".png")
+                n.substringBeforeLast('.') == stem
+            }
+            files = mine.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }
+            states = graph.saveSync.fileStates(mine)
+        }
+    }
+    if (files.isEmpty()) return
+    Spacer(Modifier.height(20.dp))
+    Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Saves", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) { Text("Manage") }
+        }
+        files.forEach { f -> SaveFileRow(f, states[f.key], onDelete = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) }
     }
 }

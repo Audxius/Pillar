@@ -86,7 +86,6 @@ import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.LocalSnackbar
 import io.github.audxius.pillar.ui.Routes
-import io.github.audxius.pillar.ui.components.AppIcon
 import io.github.audxius.pillar.ui.components.EmptyState
 import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.GameTile
@@ -159,7 +158,6 @@ fun LibraryScreen() {
             items(systems, key = { it.first }) { (system, list) ->
                 PlatformTile(system, list.size, list, Modifier.fillMaxWidth()) { nav.navigate(Routes.platform(system)) }
             }
-            item(span = { GridItemSpan(2) }) { AppsEntry() }
         }
         else -> LazyColumn(
             Modifier.fillMaxSize(),
@@ -174,7 +172,6 @@ fun LibraryScreen() {
                     PlatformRow(system, list.size) { nav.navigate(Routes.platform(system)) }
                 }
             }
-            item { AppsEntry() }
         }
     }
 }
@@ -248,21 +245,6 @@ private fun PlatformRow(system: String, count: Int, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun AppsEntry() {
-    val nav = LocalNav.current
-    Glass(Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth().tappable { nav.navigate(Routes.APPS) }, padding = 16.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Android, null, tint = Color(0xFF3DDC84), modifier = Modifier.size(30.dp))
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Android apps", style = MaterialTheme.typography.titleMedium)
-                Text("Emulators, ports and everything else", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
 // ---- Platform (game grid) ------------------------------------------------------------------
 
 private enum class GameFilter(val label: String) { ALL("All"), FAVORITES("Favorites"), PLAYED("Played"), UNPLAYED("Not played") }
@@ -278,6 +260,13 @@ fun PlatformScreen(system: String) {
     val ambient = LocalAmbient.current
     val color = systemColor(system)
     LaunchedEffect(system) { ambient.value = color }
+    val platformGames = remember(all, system) { all.filter { it.system == system } }
+    val showcase = remember(platformGames) { platformGames.randomOrNull() }
+    showcase?.let { g ->
+        val heroSrc = io.github.audxius.pillar.ui.components.rememberHeroSources(g)
+        val ambientArt = io.github.audxius.pillar.ui.theme.LocalAmbientArt.current
+        LaunchedEffect(g.id, heroSrc) { ambientArt.value = heroSrc }
+    }
 
     var filter by rememberSaveable { mutableStateOf(GameFilter.ALL) }
     var sortOpen by remember { mutableStateOf(false) }
@@ -571,64 +560,3 @@ fun SearchScreen() {
     }
 }
 
-// ---- Apps ----------------------------------------------------------------------------------
-
-@Composable
-fun AppsScreen() {
-    val graph = LocalGraph.current
-    val user = LocalUserData.current
-    val nav = LocalNav.current
-    val snackbar = LocalSnackbar.current
-    val scope = rememberCoroutineScope()
-    val apps by graph.apps.apps.collectAsStateWithLifecycle()
-    var query by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(Unit) { graph.apps.refresh() }
-    val filtered = remember(apps, query) { apps.filter { it.label.contains(query.trim(), ignoreCase = true) } }
-
-    LazyVerticalGrid(
-        GridCells.Adaptive(84.dp),
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 40.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Column {
-                ScreenHeader("Apps", "Long-press to pin to Home", onBack = { nav.popBackStack() })
-                OutlinedTextField(
-                    value = query, onValueChange = { query = it }, singleLine = true,
-                    placeholder = { Text("Filter apps") }, leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                )
-            }
-        }
-        items(filtered, key = { it.packageName }) { app ->
-            val pinned = app.packageName in user.pinnedApps
-            Column(
-                Modifier.tappable(
-                    RoundedCornerShape(18.dp),
-                    onLongClick = {
-                        scope.launch {
-                            graph.store.updateUser { u ->
-                                u.copy(pinnedApps = if (pinned) u.pinnedApps - app.packageName else u.pinnedApps + app.packageName)
-                            }
-                            snackbar.showSnackbar(if (pinned) "Unpinned ${app.label}" else "Pinned ${app.label} to Home")
-                        }
-                    },
-                ) { graph.launcher.launchApp(app.packageName) }.padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box {
-                    AppIcon(app.packageName, Modifier.size(56.dp))
-                    if (pinned) {
-                        Box(
-                            Modifier.align(Alignment.TopEnd).size(14.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(app.label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}

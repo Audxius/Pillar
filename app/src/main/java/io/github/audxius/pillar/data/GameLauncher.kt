@@ -91,27 +91,30 @@ class GameLauncher(private val context: Context, private val catalog: SystemCata
 
     fun launch(game: Game, command: EmuCommand): LaunchResult = try {
         when (val built = buildIntent(game, command)) {
-            is Built.Ok -> start(built.intent, built.uris)
+            is Built.Ok -> start(built.intent, built.uris).also { result ->
+                if (result == LaunchResult.Started && command.emulatorId == "RETROARCH") relaunchRetroArch(built.intent)
+            }
             is Built.Error -> LaunchResult.Failed(built.message)
         }
     } catch (e: Exception) {
         LaunchResult.Failed(e.message ?: e.javaClass.simpleName)
     }
 
-    fun launchApp(pkg: String): LaunchResult {
-        val intent = pm.getLaunchIntentForPackage(pkg) ?: pm.getLeanbackLaunchIntentForPackage(pkg)
-            ?: return LaunchResult.Failed("${appLabel(pkg)} can't be opened")
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return try {
-            context.startActivity(intent); LaunchResult.Started
-        } catch (e: Exception) {
-            LaunchResult.Failed(e.message ?: "Couldn't open app")
-        }
-    }
-
     private sealed interface Built {
         data class Ok(val intent: Intent, val uris: List<Uri>) : Built
         data class Error(val message: String) : Built
+    }
+
+    /**
+     * A RetroArch that is already running gets the game through onNewIntent and, if it differs
+     * from what it has loaded, quits so the frontend can start it fresh (RetroArch 1.22). Sending
+     * the same launch again shortly after restarts it with the new game. If RetroArch was simply
+     * starting up, the repeat carries the same game and RetroArch ignores it.
+     */
+    private fun relaunchRetroArch(intent: Intent) {
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            runCatching { context.startActivity(Intent(intent)) }
+        }, 1500)
     }
 
     private fun start(intent: Intent, uris: List<Uri>): LaunchResult {

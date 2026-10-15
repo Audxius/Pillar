@@ -24,9 +24,26 @@ class SettingsJsonTest {
 
     @Test
     fun oldLayoutsGainNewWidgets() {
-        val old = AppSettings(homeWidgets = listOf(io.github.audxius.pillar.data.WidgetConfig(WidgetType.HEADER)))
+        val old = AppSettings(homeWidgets = listOf(
+            io.github.audxius.pillar.data.WidgetConfig(WidgetType.HEADER),
+            io.github.audxius.pillar.data.WidgetConfig(WidgetType.QUICK_APPS),
+        ))
         val normalized = old.normalized()
-        assertEquals(WidgetType.entries.size, normalized.homeWidgets.size)
+        // The removed Quick apps widget is dropped, everything else is offered.
+        assertEquals(WidgetType.entries.size - 1, normalized.homeWidgets.size)
+        assertTrue(normalized.homeWidgets.none { it.type == WidgetType.QUICK_APPS })
         assertTrue(normalized.homeWidgets.drop(1).none { it.enabled })
+    }
+}
+
+class SettingsMigrationTest {
+    @Test
+    fun oldAuroraInstallsMoveToGameArt() {
+        val old = PillarJson.decodeFromString(AppSettings.serializer(), """{"background":"AURORA","homeWidgets":[{"type":"QUICK_APPS"}]}""")
+        val n = old.normalized()
+        assertEquals(io.github.audxius.pillar.data.BackgroundStyle.ART, n.background)
+        assertEquals(2, n.schema)
+        // A user choosing aurora again later keeps it.
+        assertEquals(io.github.audxius.pillar.data.BackgroundStyle.AURORA, n.copy(background = io.github.audxius.pillar.data.BackgroundStyle.AURORA).normalized().background)
     }
 }

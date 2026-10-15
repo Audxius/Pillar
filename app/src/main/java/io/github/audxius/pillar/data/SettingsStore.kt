@@ -51,7 +51,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
     /** Settings export excludes passwords and API keys so a shared backup never leaks credentials. */
     fun exportJson(includeSecrets: Boolean): String {
         val s = settings.value
-        val out = if (includeSecrets) s else s.copy(rommPassword = "", rommToken = "", raApiKey = "")
+        val out = if (includeSecrets) s else s.copy(rommPassword = "", rommToken = "", raApiKey = "", webdavPassword = "", sgdbKey = "")
         return PillarJson.encodeToString(AppSettings.serializer(), out)
     }
 
@@ -63,6 +63,8 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
                 rommPassword = parsed.rommPassword.ifBlank { current.rommPassword },
                 rommToken = parsed.rommToken.ifBlank { current.rommToken },
                 raApiKey = parsed.raApiKey.ifBlank { current.raApiKey },
+                webdavPassword = parsed.webdavPassword.ifBlank { current.webdavPassword },
+                sgdbKey = parsed.sgdbKey.ifBlank { current.sgdbKey },
             )
         }
         return true

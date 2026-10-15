@@ -222,24 +222,45 @@ class LibraryRepository(
         return kind.folders.mapNotNull { bySystem[it]?.get(key) }
     }
 
-    /** Ordered image sources for a game; the UI tries each until one loads. */
-    fun coverCandidates(game: Game, settings: AppSettings, user: UserData): List<String> = buildList {
+    /**
+     * Ordered image sources for a game tile; the UI tries each until one loads. The user's cover
+     * style decides whether box art, SteamGridDB grids or square icons come first.
+     */
+    fun coverCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
         user.customCover[game.id]?.let(::add)
+        when (settings.coverStyle) {
+            CoverStyle.SQUARE -> art?.sgdbSquare?.let(::add)
+            CoverStyle.GRID -> art?.sgdbGrid?.let(::add)
+            CoverStyle.BOXART -> Unit
+        }
         addAll(mediaFor(game, MediaKind.COVER).take(1))
         user.remoteCover[game.id]?.let(::add)
-        if (settings.onlineCovers) libretroUrl(game, settings.onlineArt)?.let(::add)
-    }
+        if (settings.onlineCovers) {
+            when (settings.onlineArt) {
+                OnlineArt.BOXART -> art?.boxart?.let(::add)
+                OnlineArt.SNAP -> art?.snap?.let(::add)
+                OnlineArt.TITLE -> art?.boxart?.let { add(it.replace("/Named_Boxarts/", "/Named_Titles/")) }
+            }
+            // Until the fuzzy lookup has run, try the exact file name.
+            if (art?.libretroChecked != true) libretroUrl(game, settings.onlineArt)?.let(::add)
+        }
+        art?.sgdbGrid?.let(::add)
+        art?.sgdbSquare?.let(::add)
+    }.distinct()
 
-    fun heroCandidates(game: Game, settings: AppSettings, user: UserData): List<String> = buildList {
+    /** Wide background art for heroes and game pages. */
+    fun heroCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
+        art?.sgdbHero?.let(::add)
         addAll(mediaFor(game, MediaKind.HERO))
         if (settings.onlineCovers) {
-            libretroUrl(game, OnlineArt.SNAP)?.let(::add)
-            libretroUrl(game, OnlineArt.TITLE)?.let(::add)
+            art?.snap?.let(::add)
+            if (art?.libretroChecked != true) libretroUrl(game, OnlineArt.SNAP)?.let(::add)
         }
-        addAll(coverCandidates(game, settings, user))
-    }
+        addAll(coverCandidates(game, settings, user, art))
+    }.distinct()
 
-    fun logo(game: Game): String? = mediaFor(game, MediaKind.LOGO).firstOrNull()
+    /** Transparent title logo: ES-DE marquee first, then SteamGridDB. */
+    fun logo(game: Game, art: ArtSet?): String? = mediaFor(game, MediaKind.LOGO).firstOrNull() ?: art?.sgdbLogo
 
     fun libretroUrl(game: Game, art: OnlineArt): String? {
         val system = catalog.meta(game.system).libretro ?: return null

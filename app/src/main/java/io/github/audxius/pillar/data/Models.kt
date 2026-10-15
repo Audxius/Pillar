@@ -13,7 +13,11 @@ val PillarJson = Json {
 
 @Serializable enum class ThemeMode { SYSTEM, DARK, AMOLED, LIGHT }
 @Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL }
-@Serializable enum class BackgroundStyle { AURORA, GRADIENT, SOLID, IMAGE }
+@Serializable enum class BackgroundStyle { ART, AURORA, GRADIENT, SOLID, IMAGE }
+@Serializable enum class HomeLayout { CAROUSEL, FEED }
+
+/** Which artwork fills game tiles. */
+@Serializable enum class CoverStyle { BOXART, GRID, SQUARE }
 @Serializable enum class CoverShape { BOX, SQUARE, WIDE }
 @Serializable enum class LibraryLayout { GRID, LIST }
 @Serializable enum class PlatformLayout { CARDS, GRID, LIST }
@@ -33,7 +37,8 @@ enum class WidgetType(val title: String, val description: String) {
     RECENTLY_ADDED("Recently added", "Newest files in your library"),
     ROMM_LATEST("New on RomM", "Latest additions on your RomM server"),
     RANDOM("Random pick", "Can't decide? Let Pillar choose"),
-    QUICK_APPS("Quick apps", "Pinned Android apps"),
+    // Removed in 0.2 (Pillar is not a launcher); kept only so older saved layouts still load.
+    QUICK_APPS("Quick apps", "Removed"),
     STATS("Library stats", "Counts across your collection"),
 }
 
@@ -51,7 +56,6 @@ val DefaultWidgets = listOf(
     WidgetConfig(WidgetType.ROMM_LATEST),
     WidgetConfig(WidgetType.RA_PLAYED, enabled = false),
     WidgetConfig(WidgetType.RANDOM),
-    WidgetConfig(WidgetType.QUICK_APPS, enabled = false),
     WidgetConfig(WidgetType.STATS, enabled = false),
 )
 
@@ -68,6 +72,8 @@ data class CustomCommand(val label: String, val command: String)
 @Serializable
 data class AppSettings(
     val onboarded: Boolean = false,
+    /** Settings format version, used to move older installs onto new defaults. */
+    val schema: Int = 0,
 
     // Appearance
     val themeMode: ThemeMode = ThemeMode.DARK,
@@ -77,7 +83,7 @@ data class AppSettings(
     val font: AppFont = AppFont.NUNITO,
     val textScale: Float = 1f,
     val cornerRadius: Int = 22,
-    val background: BackgroundStyle = BackgroundStyle.AURORA,
+    val background: BackgroundStyle = BackgroundStyle.ART,
     val backgroundImageUri: String? = null,
     val backgroundBlur: Int = 12,
     val backgroundDim: Float = 0.5f,
@@ -86,6 +92,11 @@ data class AppSettings(
     val glassCards: Boolean = true,
     val gridColumns: Int = 3,
     val coverShape: CoverShape = CoverShape.BOX,
+    val coverStyle: CoverStyle = CoverStyle.BOXART,
+    /** Crop art to fill tiles instead of showing all of it over a blurred backdrop. */
+    val coverCrop: Boolean = false,
+    val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
+    val sgdbKey: String = "",
     val showGameTitles: Boolean = true,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
     val platformLayout: PlatformLayout = PlatformLayout.CARDS,
@@ -123,6 +134,14 @@ data class AppSettings(
     val rommPassword: String = "",
     val rommToken: String = "",
 
+    // Save sync (WebDAV, compatible with RetroArch Cloud Sync)
+    val webdavUrl: String = "",
+    val webdavUser: String = "",
+    val webdavPassword: String = "",
+    val savesDir: String? = null,
+    val statesDir: String? = null,
+    val syncOnOpen: Boolean = true,
+
     // RetroAchievements
     val raUser: String = "",
     val raApiKey: String = "",
@@ -136,9 +155,13 @@ data class AppSettings(
 
     /** Adds widgets introduced in newer versions so old saved layouts still show them in settings. */
     fun normalized(): AppSettings {
-        val known = homeWidgets.map { it.type }.toSet()
-        val missing = WidgetType.entries.filter { it !in known }.map { WidgetConfig(it, enabled = false) }
-        return if (missing.isEmpty()) this else copy(homeWidgets = homeWidgets + missing)
+        val kept = homeWidgets.filter { it.type != WidgetType.QUICK_APPS }
+        val known = kept.map { it.type }.toSet()
+        val missing = WidgetType.entries.filter { it !in known && it != WidgetType.QUICK_APPS }.map { WidgetConfig(it, enabled = false) }
+        var s = copy(homeWidgets = kept + missing)
+        // 0.2: game-art background replaced the aurora as the default look.
+        if (s.schema < 2) s = s.copy(schema = 2, background = if (s.background == BackgroundStyle.AURORA) BackgroundStyle.ART else s.background)
+        return s
     }
 }
 
@@ -172,5 +195,4 @@ data class UserData(
     val raIds: Map<String, Int> = emptyMap(),
     val rommIds: Map<String, Int> = emptyMap(),
     val remoteCover: Map<String, String> = emptyMap(),
-    val pinnedApps: List<String> = emptyList(),
 )

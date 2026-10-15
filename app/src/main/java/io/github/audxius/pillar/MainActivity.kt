@@ -36,7 +36,8 @@ class MainActivity : ComponentActivity() {
         // Coming back from a game is the moment new achievements or installs show up.
         graph.ra.refresh()
         graph.rommRepo.refresh()
-        graph.apps.refresh()
+        // Pull the latest saves when you open Pillar, and push new ones when you come back from a game.
+        graph.saveSync.syncIfDue()
     }
 
     private fun applyOrientation(mode: OrientationMode) {

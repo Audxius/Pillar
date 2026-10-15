@@ -1,10 +1,10 @@
 # Pillar
 
-**A portrait-first, visuals-first emulation frontend for Android phones.**
+**A portrait-first, visuals-first ROM manager and emulation frontend for Android phones.**
 
-Pillar is a launcher for your game collection, designed for holding your phone upright. It
-works with the emulators you already have, can download games from your own
-[RomM](https://romm.app) server, and shows your [RetroAchievements](https://retroachievements.org)
+Pillar organizes your game collection for holding your phone upright. It launches the emulators
+you already have, downloads games from your own [RomM](https://romm.app) server, keeps your
+RetroArch saves in sync, and shows your [RetroAchievements](https://retroachievements.org)
 progress. Almost everything about how it looks can be changed.
 
 > Pillar is a frontend. It does not include games or emulators.
@@ -13,7 +13,7 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/home.webp" width="23%" alt="Home screen" />
   <img src="docs/library.webp" width="23%" alt="Library" />
   <img src="docs/game.webp" width="23%" alt="Game page" />
-  <img src="docs/light.webp" width="23%" alt="Light theme" />
+  <img src="docs/saves.webp" width="23%" alt="Saves" />
 </p>
 
 ## Install
@@ -28,16 +28,23 @@ Android 8.0 or newer.
 
 ## Features
 
-- **Built for portrait.** A big swipeable "Jump back in" carousel, platform cards, cover grids
-  and game pages laid out for tall screens. Landscape and auto-rotate are available too.
+- **Built for portrait.** A full-screen home with the selected game's art, a snapping cover
+  carousel and shelves for Recent, Favorites and each system. Platform cards, cover grids and game
+  pages are laid out for tall screens. A widget feed layout and landscape are available too.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
   ES-DE). Multi-disc games and `.cue`/`.bin` sets show up once.
 - **200+ systems and hundreds of emulators.** Uses ES-DE's open Android system and emulator
   definitions: RetroArch cores, Dolphin, AetherSX2/NetherSX2, DuckStation, PPSSPP, melonDS,
   Azahar, Eden, Flycast, MAME4droid and many more. Choose a default per system or per game, or
   write your own launch command.
-- **Artwork.** Box art from the libretro thumbnail server, your RomM covers, or ES-DE's
-  `downloaded_media` folder (covers, fanart, logos). Set any image as a custom cover.
+- **Artwork.** Box art from the libretro thumbnail server with fuzzy name matching (so
+  "Final Fantasy 3.sfc" still finds its cover), your RomM covers, ES-DE's `downloaded_media`
+  folder, or [SteamGridDB](https://www.steamgriddb.com) with a free API key (covers, square icons,
+  wide backgrounds, logos). Covers are never cropped unless you want them to be.
+- **Saves & sync.** Lists every save file and save state by game. Syncs with the same WebDAV
+  server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
+  own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
+  deletes anything on the server and backs up any save before replacing it.
 - **RomM.** Browse platforms, search, read game info and download games straight into the right
   system folder. Multi-file games are extracted for you, and downloads keep going in the
   background.
@@ -46,15 +53,14 @@ Android 8.0 or newer.
 - **Customize everything.**
   - Theme: 8 palettes, any accent color, Material You, dark / AMOLED black / light.
   - Fonts: Nunito, Outfit, Space Grotesk, a pixel font, or the system font, plus text size.
-  - Background: animated aurora, gradient, solid or your own image (with blur and dim), tinted by
-    the platform or game on screen.
+  - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
+    blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
   - Home screen: 12 widgets (clock, continue playing, platforms, favorites, RetroAchievements,
     RomM, random pick, quick apps, stats…) that you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.
   - Export and import all of it as a backup file.
-- **Launcher mode.** Optionally set Pillar as your home screen, with an apps drawer.
 - **Controller friendly.** D-pad focus highlights; A selects and B goes back.
 
 ## Setting up
