@@ -48,6 +48,7 @@ import io.github.audxius.pillar.ui.components.tappable
 import io.github.audxius.pillar.ui.rememberGameLauncher
 import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalUserData
+import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import java.text.SimpleDateFormat
@@ -84,8 +85,7 @@ fun ScreenHeader(
 @Composable
 fun RoundIcon(icon: ImageVector, description: String, modifier: Modifier = Modifier, tint: Color? = null, onClick: () -> Unit) {
     Box(
-        modifier.size(44.dp).clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
+        modifier.size(44.dp).styledSurface(CircleShape)
             .tappable(CircleShape, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

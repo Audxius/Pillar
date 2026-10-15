@@ -30,6 +30,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items as staggeredItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material3.DropdownMenu
@@ -118,11 +123,26 @@ fun LibraryScreen() {
     val ambient = LocalAmbient.current
     LaunchedEffect(Unit) { ambient.value = null }
 
+    val downloads by graph.downloads.states.collectAsStateWithLifecycle()
+    val rommSyncing by graph.rommRepo.syncing.collectAsStateWithLifecycle()
+    var showDownloads by remember { mutableStateOf(false) }
+    if (showDownloads) DownloadsSheet { showDownloads = false }
     val header: @Composable () -> Unit = {
-        ScreenHeader("Library", "${games.size} games · ${systems.size} systems") {
+        val remoteCount = games.count { it.remote }
+        ScreenHeader(
+            "Library",
+            listOfNotNull("${games.size} games", "${systems.size} systems", remoteCount.takeIf { it > 0 }?.let { "$it on RomM" }).joinToString(" · "),
+        ) {
+            if (downloads.isNotEmpty()) {
+                RoundIcon(Icons.Rounded.Download, "Downloads") { showDownloads = true }
+                Spacer(Modifier.width(8.dp))
+            }
             RoundIcon(Icons.Rounded.Search, "Search") { nav.navigate(Routes.SEARCH) }
             Spacer(Modifier.width(8.dp))
-            SpinningRefresh(scan.running) { graph.library.scanAsync() }
+            SpinningRefresh(scan.running || rommSyncing) {
+                graph.library.scanAsync()
+                graph.rommRepo.refresh(force = true)
+            }
         }
         if (scan.running) {
             Text(
@@ -247,7 +267,7 @@ private fun PlatformRow(system: String, count: Int, onClick: () -> Unit) {
 
 // ---- Platform (game grid) ------------------------------------------------------------------
 
-private enum class GameFilter(val label: String) { ALL("All"), FAVORITES("Favorites"), PLAYED("Played"), UNPLAYED("Not played") }
+private enum class GameFilter(val label: String) { ALL("All"), LOCAL("On device"), REMOTE("On RomM"), FAVORITES("Favorites"), PLAYED("Played"), UNPLAYED("Not played") }
 
 @Composable
 fun PlatformScreen(system: String) {
@@ -277,6 +297,8 @@ fun PlatformScreen(system: String) {
         val base = all.filter { it.system == system }.filter {
             when (filter) {
                 GameFilter.ALL -> true
+                GameFilter.LOCAL -> !it.remote
+                GameFilter.REMOTE -> it.remote
                 GameFilter.FAVORITES -> it.id in user.favorites
                 GameFilter.PLAYED -> (user.lastPlayed[it.id] ?: 0) > 0
                 GameFilter.UNPLAYED -> (user.lastPlayed[it.id] ?: 0) == 0L
@@ -334,7 +356,7 @@ fun PlatformScreen(system: String) {
                 Text(currentEmu ?: "Choose emulator", style = MaterialTheme.typography.labelLarge, maxLines = 1)
             }
             LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(GameFilter.entries) { f ->
+                items(GameFilter.entries.filter { f -> (f != GameFilter.LOCAL && f != GameFilter.REMOTE) || all.any { it.remote } }) { f ->
                     FilterChip(
                         selected = filter == f,
                         onClick = { filter = f },
@@ -350,18 +372,19 @@ fun PlatformScreen(system: String) {
     }
 
     if (settings.libraryLayout == LibraryLayout.GRID) {
-        LazyVerticalGrid(
-            GridCells.Fixed(settings.gridColumns.coerceIn(2, 6)),
+        // Staggered so covers keep their real shapes without gaps.
+        LazyVerticalStaggeredGrid(
+            StaggeredGridCells.Fixed(settings.gridColumns.coerceIn(2, 6)),
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 40.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalItemSpacing = 16.dp,
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) { header() }
-            items(games, key = { it.id }) { g ->
+            item(span = StaggeredGridItemSpan.FullLine) { header() }
+            staggeredItems(games, key = { it.id }) { g ->
                 GameTile(g, sharedKey = "cover-p-${g.id}", onLongClick = { quick = g }) { nav.navigate(Routes.game(g.id, "p")) }
             }
-            if (games.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+            if (games.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
                 Text("Nothing here with this filter.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
             }
         }
@@ -492,43 +515,36 @@ private fun EmuRow(label: String, sub: String, selected: Boolean, available: Boo
 
 @Composable
 fun SearchScreen() {
-    val graph = LocalGraph.current
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val nav = LocalNav.current
     val games = rememberVisibleGames()
     var query by rememberSaveable { mutableStateOf("") }
-    var remote by remember { mutableStateOf<List<RommRom>>(emptyList()) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    val local = remember(query, games, user.customTitle) {
+    // Searches everything: games on this device and the RomM library.
+    val results = remember(query, games, user.customTitle) {
         val q = query.trim().lowercase()
         if (q.length < 2) emptyList()
-        else games.filter { (user.customTitle[it.id] ?: it.title).lowercase().contains(q) || it.fileName.lowercase().contains(q) }.take(120)
-    }
-    LaunchedEffect(query, settings.rommConfigured) {
-        remote = emptyList()
-        if (!settings.rommConfigured || query.trim().length < 2) return@LaunchedEffect
-        delay(400)
-        remote = runCatching { graph.romm.roms(search = query.trim(), limit = 30).items }.getOrDefault(emptyList())
+        else games.filter { (user.customTitle[it.id] ?: it.title).lowercase().contains(q) || it.fileName.lowercase().contains(q) }.take(200)
     }
 
-    LazyVerticalGrid(
-        GridCells.Fixed(settings.gridColumns.coerceIn(2, 6)),
+    LazyVerticalStaggeredGrid(
+        StaggeredGridCells.Fixed(settings.gridColumns.coerceIn(2, 6)),
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 40.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalItemSpacing = 16.dp,
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
+        item(span = StaggeredGridItemSpan.FullLine) {
             Column {
                 ScreenHeader("Search", onBack = { nav.popBackStack() })
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
                     singleLine = true,
-                    placeholder = { Text("Games on this device and RomM") },
+                    placeholder = { Text("Search all your games") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) Icon(Icons.Rounded.Close, "Clear", Modifier.clip(CircleShape).tappable(CircleShape) { query = "" })
@@ -540,23 +556,16 @@ fun SearchScreen() {
                     ),
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp).focusRequester(focus),
                 )
+                if (results.isNotEmpty()) SectionHeader("${results.size} found", Modifier.padding(top = 10.dp))
             }
         }
-        if (local.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("On this device · ${local.size}", Modifier.padding(top = 6.dp)) }
-            items(local, key = { it.id }) { g ->
-                GameTile(g, sharedKey = "cover-s-${g.id}", showSystem = true) { nav.navigate(Routes.game(g.id, "s")) }
-            }
+        staggeredItems(results, key = { it.id }) { g ->
+            GameTile(g, sharedKey = "cover-s-${g.id}", showSystem = true) { nav.navigate(Routes.game(g.id, "s")) }
         }
-        if (remote.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("On RomM · ${remote.size}", Modifier.padding(top = 6.dp)) }
-            items(remote, key = { "r${it.id}" }) { rom -> RommTile(rom) { nav.navigate(Routes.rommRom(rom.id)) } }
-        }
-        if (query.trim().length >= 2 && local.isEmpty() && remote.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+        if (query.trim().length >= 2 && results.isEmpty()) {
+            item(span = StaggeredGridItemSpan.FullLine) {
                 Text("No matches for \"$query\"", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
             }
         }
     }
 }
-

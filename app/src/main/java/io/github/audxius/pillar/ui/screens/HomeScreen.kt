@@ -111,7 +111,7 @@ import kotlin.math.absoluteValue
 @Composable
 fun rememberVisibleGames(): List<Game> {
     val graph = LocalGraph.current
-    val games by graph.library.games.collectAsStateWithLifecycle()
+    val games by graph.allGames.collectAsStateWithLifecycle()
     val settings = LocalSettings.current
     val user = LocalUserData.current
     return remember(games, settings.hiddenSystems, user.hidden) {
@@ -588,62 +588,15 @@ private fun RaPlayedWidget() {
 
 @Composable
 private fun RommLatestWidget() {
-    val graph = LocalGraph.current
     val settings = LocalSettings.current
-    val nav = LocalNav.current
     if (!settings.rommConfigured) {
-        ConnectCard("Connect your RomM server", "Browse and download games from your own library.", SettingsPage.ROMM)
+        ConnectCard("Connect your RomM server", "Your whole RomM library shows up here, ready to download and play.", SettingsPage.ROMM)
         return
     }
-    val latest by graph.rommRepo.latest.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { graph.rommRepo.refresh() }
-    val list = (latest as? Loadable.Ready)?.value
-    Column {
-        SectionHeader("New on RomM", action = "Browse") { nav.navigate(Routes.ROMM) }
-        Spacer(Modifier.height(8.dp))
-        when {
-            list != null -> LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(list, key = { it.id }) { rom -> RommTile(rom, Modifier.width(112.dp)) { nav.navigate(Routes.rommRom(rom.id)) } }
-            }
-            latest is Loadable.Error -> Text(
-                (latest as Loadable.Error).message, color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp),
-            )
-            else -> Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                repeat(3) { Shimmer(Modifier.width(112.dp).height(150.dp)) }
-            }
-        }
-    }
+    val games = rememberVisibleGames()
+    val latest = remember(games) { games.filter { it.remote }.sortedByDescending { it.modified }.take(20) }
+    GameRowWidget("New on RomM", latest, "romm") { }
 }
-
-@Composable
-fun RommTile(rom: RommRom, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val graph = LocalGraph.current
-    val settings = LocalSettings.current
-    val corner = LocalCorner.current
-    val system = remember(rom.id) { graph.downloads.targetSystem(rom) }
-    val cover = remember(rom.id, settings.rommUrl) { listOfNotNull(graph.romm.coverUrl(rom)) }
-    Column(modifier.tappable(RoundedCornerShape(corner * 0.7f), onClick = onClick)) {
-        Box(
-            Modifier.fillMaxWidth().aspectRatioCover().clip(RoundedCornerShape(corner * 0.7f))
-        ) {
-            MultiImage(cover, Modifier.matchParentSize()) {
-                CoverPlaceholder(rom.title, system ?: rom.platformSlug.orEmpty(), compact = true)
-            }
-        }
-        if (settings.showGameTitles) {
-            Spacer(Modifier.height(6.dp))
-            Text(rom.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(
-                rom.platformDisplayName ?: rom.platformSlug.orEmpty(),
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
-fun Modifier.aspectRatioCover(): Modifier = this.aspectRatio(LocalSettings.current.coverShape.ratio())
 
 // ---- Misc widgets --------------------------------------------------------------------------
 

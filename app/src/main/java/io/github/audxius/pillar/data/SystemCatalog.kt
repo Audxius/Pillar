@@ -46,11 +46,17 @@ class SystemCatalog(context: Context) {
     operator fun get(id: String): SystemDef? = systems[id]
 
     fun meta(id: String): SystemMeta = META[id] ?: SystemMeta(
-        short = systems[id]?.fullName?.let(::shortFromFullName) ?: id.uppercase(),
+        short = systems[id]?.fullName?.let(::shortFromFullName) ?: extraNames[id] ?: id.uppercase(),
         color = colorFromId(id),
     )
 
-    fun fullName(id: String): String = systems[id]?.fullName ?: id
+    /** Typical box-art width / height for a system, used until a cover has loaded once. */
+    fun boxRatio(id: String): Float = BOX_RATIO[id] ?: 0.75f
+
+    /** Names for RomM platforms that have no ES-DE system folder. */
+    val extraNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun fullName(id: String): String = systems[id]?.fullName ?: extraNames[id] ?: id
 
     /** Matches a folder name to a system, accepting ES-DE ids plus common alternative names. */
     fun resolveFolder(name: String): String? {
@@ -191,6 +197,16 @@ class SystemCatalog(context: Context) {
             "turbografx-cd" to "tg-cd", "vectrex" to "vectrex", "videopac-g7400" to "videopac",
             "virtualboy" to "virtualboy", "wii" to "wii", "wiiu" to "wiiu", "wonderswan" to "wonderswan",
             "wonderswan-color" to "wonderswancolor", "xbox" to "xbox", "zxs" to "zxspectrum",
+        )
+
+        val BOX_RATIO = mapOf(
+            "gb" to 1.0f, "gbc" to 1.0f, "gba" to 1.0f, "nds" to 0.9f, "n3ds" to 0.86f, "virtualboy" to 0.72f,
+            "nes" to 0.72f, "famicom" to 1.1f, "fds" to 0.9f, "snes" to 1.38f, "snesna" to 1.38f, "sfc" to 0.72f,
+            "n64" to 1.38f, "gc" to 0.71f, "wii" to 0.71f, "wiiu" to 0.71f, "switch" to 0.62f,
+            "psx" to 1.0f, "ps2" to 0.71f, "ps3" to 0.86f, "psp" to 0.58f, "psvita" to 0.83f,
+            "genesis" to 0.71f, "megadrive" to 0.71f, "mastersystem" to 0.71f, "gamegear" to 0.75f, "segacd" to 1.0f,
+            "sega32x" to 0.71f, "saturn" to 0.63f, "dreamcast" to 1.0f, "pcengine" to 0.9f, "tg16" to 0.71f,
+            "atari2600" to 0.72f, "atari7800" to 0.72f, "ngp" to 0.82f, "ngpc" to 0.82f, "wonderswan" to 0.95f, "wonderswancolor" to 0.95f,
         )
 
         // Libretro thumbnail folder names match RomM's libretro_handler.py table.

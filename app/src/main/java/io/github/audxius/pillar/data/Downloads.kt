@@ -23,7 +23,7 @@ sealed interface DownloadState {
     data class Running(override val rom: RommRom, val bytes: Long, val total: Long) : DownloadState {
         val fraction: Float get() = if (total <= 0) 0f else (bytes.toFloat() / total).coerceIn(0f, 1f)
     }
-    data class Done(override val rom: RommRom, val system: String) : DownloadState
+    data class Done(override val rom: RommRom, val system: String, val gameId: String? = null) : DownloadState
     data class Failed(override val rom: RommRom, val message: String) : DownloadState
 }
 
@@ -44,7 +44,13 @@ class Downloads(
 
     fun targetSystem(rom: RommRom): String? = catalog.resolveRommPlatform(rom.platformSlug, rom.platformFsSlug)
 
-    fun enqueue(rom: RommRom) {
+    private val playAfter: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** True once for a finished download that should start playing. */
+    fun consumePlayAfter(romId: Int): Boolean = playAfter.remove(romId)
+
+    fun enqueue(rom: RommRom, playAfter: Boolean = false) {
+        if (playAfter) this.playAfter.add(rom.id)
         val current = _states.value[rom.id]
         if (current is DownloadState.Queued || current is DownloadState.Running) return
         cancelled.remove(rom.id)
@@ -53,6 +59,7 @@ class Downloads(
     }
 
     fun cancel(romId: Int) {
+        playAfter.remove(romId)
         cancelled.add(romId)
         _states.update { it - romId }
     }
@@ -113,11 +120,12 @@ class Downloads(
                 }
             }
 
+            var gameId: String? = null
             if (system != null) {
                 library.rescanSystem(system)
-                linkToLibrary(rom, system)
+                gameId = linkToLibrary(rom, system)
             }
-            set(DownloadState.Done(rom, system ?: folderName))
+            set(DownloadState.Done(rom, system ?: folderName, gameId))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -126,12 +134,13 @@ class Downloads(
         }
     }
 
-    private suspend fun linkToLibrary(rom: RommRom, system: String) {
+    /** Links the downloaded file to its RomM entry and returns the local game id. */
+    private suspend fun linkToLibrary(rom: RommRom, system: String): String? {
         val stem = LibraryRepository.stem(rom.fsName)
         val game = library.games.value.firstOrNull { it.system == system && it.fileName == rom.fsName }
             ?: library.games.value.firstOrNull { it.system == system && it.id.contains("/${rom.fsName}/") }
             ?: library.games.value.firstOrNull { it.system == system && LibraryRepository.stem(it.fileName) == stem }
-            ?: return
+            ?: return null
         val cover = romm.coverUrl(rom)
         store.updateUser { u ->
             u.copy(
@@ -140,6 +149,7 @@ class Downloads(
                 remoteCover = cover?.let { u.remoteCover + (game.id to it) } ?: u.remoteCover,
             )
         }
+        return game.id
     }
 
     private suspend fun copy(input: InputStream, out: java.io.OutputStream, rom: RommRom, total: Long, startAt: Long): Long {

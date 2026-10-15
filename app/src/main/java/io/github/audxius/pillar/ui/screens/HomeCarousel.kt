@@ -79,6 +79,17 @@ import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.Routes
 import io.github.audxius.pillar.ui.components.GameCover
+import io.github.audxius.pillar.ui.components.GameLogo
+import io.github.audxius.pillar.ui.components.Gloss
+import io.github.audxius.pillar.ui.components.PrimaryAction
+import io.github.audxius.pillar.ui.theme.chipColors
+import io.github.audxius.pillar.ui.theme.styledSurface
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.unit.Dp
 import io.github.audxius.pillar.ui.components.MultiImage
 import io.github.audxius.pillar.ui.components.fadeBottom
 import io.github.audxius.pillar.ui.components.gameTitle
@@ -160,31 +171,34 @@ fun HomeCarouselScreen() {
         ambient.value = selColor
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val screenH = maxHeight
-        // Crisp art across the top; the blurred global backdrop continues it below.
-        Crossfade(targetState = selected.id to hero, animationSpec = tween(500), label = "hero") { (_, src) ->
-            MultiImage(src, Modifier.fillMaxWidth().height(screenH * 0.62f).fadeBottom(0.55f)) {}
-        }
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        CarouselTopBar(shelves, shelf.key) { shelfKey = it }
+        Spacer(Modifier.height(14.dp))
+        // The art sits in its own frame, shown whole, with nothing drawn over it.
+        val corner = LocalCorner.current
         Box(
-            Modifier.fillMaxWidth().height(160.dp)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
-        )
-
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.statusBarsPadding()) { CarouselTopBar(shelves, shelf.key) { shelfKey = it } }
-            Spacer(Modifier.weight(1f))
-            GameInfo(selected)
-            Spacer(Modifier.height(18.dp))
-            Carousel(shelf.games, listState, selectedIndex, onLongPress = { quick = it })
-            Text(
-                "${selectedIndex + 1} / ${shelf.games.size}",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.6f),
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp),
-            )
-            Spacer(Modifier.navigationBarsPadding().height(BottomBarSpace - 20.dp))
+            Modifier.padding(horizontal = 16.dp).fillMaxWidth().aspectRatio(16f / 9f)
+                .shadow(18.dp, RoundedCornerShape(corner), ambientColor = selColor, spotColor = selColor)
+                .clip(RoundedCornerShape(corner))
+        ) {
+            Crossfade(targetState = selected.id to hero, animationSpec = tween(400), label = "hero") { (_, src) ->
+                MultiImage(src, Modifier.fillMaxSize(), fit = true) {
+                    Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(selColor, lerp(selColor, Color.Black, 0.6f)))))
+                }
+            }
+            Gloss(RoundedCornerShape(corner))
         }
+        Spacer(Modifier.height(16.dp))
+        GameInfo(selected)
+        Spacer(Modifier.weight(1f))
+        Carousel(shelf.games, listState, selectedIndex, onLongPress = { quick = it })
+        Text(
+            "${selectedIndex + 1} / ${shelf.games.size}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp),
+        )
+        Spacer(Modifier.navigationBarsPadding().height(BottomBarSpace - 22.dp))
     }
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
 }
@@ -192,90 +206,60 @@ fun HomeCarouselScreen() {
 @Composable
 private fun CarouselTopBar(shelves: List<Shelf>, selected: String, onSelect: (String) -> Unit) {
     val nav = LocalNav.current
-    Column {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClockPill()
-            Spacer(Modifier.weight(1f))
-            Box(
-                Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
-                    .tappable(CircleShape) { nav.navigate(Routes.SEARCH) },
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Rounded.Search, "Search", tint = Color.White, modifier = Modifier.size(20.dp)) }
-        }
-        Spacer(Modifier.height(10.dp))
-        val rowState = rememberLazyListState()
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         LazyRow(
-            state = rowState,
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 16.dp, end = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(shelves, key = { _, s -> s.key }) { _, s ->
                 val active = s.key == selected
                 val accent = if (s.key.startsWith("sys:")) systemColor(s.key.removePrefix("sys:")) else MaterialTheme.colorScheme.primary
-                Row(
-                    Modifier.clip(RoundedCornerShape(50))
-                        .background(if (active) Color.White else Color.Black.copy(alpha = 0.35f))
-                        .border(1.dp, if (active) Color.White else Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
-                        .tappable(RoundedCornerShape(50)) { onSelect(s.key) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(accent))
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        s.label, style = MaterialTheme.typography.labelLarge, maxLines = 1,
-                        color = if (active) Color(0xFF15131C) else Color.White,
-                    )
-                }
+                StyledChip(s.label, active, accent) { onSelect(s.key) }
             }
         }
+        StyledIconButton(Icons.Rounded.Search, "Search", Modifier.padding(end = 12.dp)) { nav.navigate(Routes.SEARCH) }
+    }
+}
+
+/** Pill chip drawn in the current style. */
+@Composable
+fun StyledChip(label: String, active: Boolean, dot: Color? = null, onClick: () -> Unit) {
+    val (bg, fg, rim) = chipColors(active)
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(bg).border(1.dp, rim, RoundedCornerShape(50))
+            .tappable(RoundedCornerShape(50), onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (dot != null) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+            Spacer(Modifier.width(7.dp))
+        }
+        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, color = fg)
     }
 }
 
 @Composable
-private fun ClockPill() {
-    val settings = LocalSettings.current
-    val context = LocalContext.current
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var battery by remember { mutableIntStateOf(-1) }
-    var charging by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            context.getSystemService(BatteryManager::class.java)?.let { bm ->
-                battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 } ?: -1
-                charging = bm.isCharging
-            }
-            delay(1000L * (60 - Calendar.getInstance().get(Calendar.SECOND)).coerceAtLeast(1))
-        }
-    }
-    val time = SimpleDateFormat(if (settings.clock24h) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date(now))
-    val date = SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date(now))
-    Row(
-        Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.35f))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(time, style = MaterialTheme.typography.titleSmall, color = Color.White)
-        Text("  |  $date", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f))
-        if (settings.showBattery && battery >= 0) {
-            Text("  |  ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f))
-            Icon(
-                if (charging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryFull, null,
-                tint = if (battery <= 15 && !charging) Color(0xFFFF6B6B) else Color.White,
-                modifier = Modifier.size(15.dp).graphicsLayer { rotationZ = 90f },
-            )
-            Text(" $battery%", style = MaterialTheme.typography.labelMedium, color = Color.White)
-        }
-    }
+fun StyledIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    size: Dp = 44.dp,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier.size(size).styledSurface(CircleShape).tappable(CircleShape, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, label, tint = tint, modifier = Modifier.size(size * 0.46f)) }
 }
 
 @Composable
 private fun GameInfo(game: Game) {
     val graph = LocalGraph.current
     val user = LocalUserData.current
+    val settings = LocalSettings.current
     val nav = LocalNav.current
     val launch = rememberGameLauncher()
     val scope = rememberCoroutineScope()
@@ -283,57 +267,54 @@ private fun GameInfo(game: Game) {
     val logo = remember(game.id, art) { graph.library.logo(game, art) }
     val fav = game.id in user.favorites
     val color = systemColor(game.system)
+    val downloads by graph.downloads.states.collectAsStateWithLifecycle()
 
     AnimatedContent(
         targetState = game,
-        transitionSpec = { (fadeIn(tween(250)) + slideInVertically(tween(250)) { it / 6 }) togetherWith fadeOut(tween(150)) },
+        transitionSpec = { (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 8 }) togetherWith fadeOut(tween(120)) },
         contentKey = { it.id },
         label = "gameInfo",
     ) { g ->
-        Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(118.dp), verticalArrangement = Arrangement.Center) {
             var logoFailed by remember(g.id) { mutableStateOf(false) }
-            if (logo != null && !logoFailed) {
-                AsyncImage(
-                    logo, gameTitle(g),
-                    contentScale = ContentScale.Fit,
-                    alignment = Alignment.CenterStart,
-                    onError = { logoFailed = true },
-                    modifier = Modifier.fillMaxWidth(0.8f).height(84.dp),
-                )
+            val gLogo = if (g.id == game.id) logo else null
+            if (settings.showLogos && gLogo != null && !logoFailed) {
+                // Same visual weight for every logo, whatever its shape or padding.
+                GameLogo(gLogo, gameTitle(g), maxWidth = 260.dp, maxHeight = 78.dp, onFailed = { logoFailed = true })
             } else {
-                Text(
-                    gameTitle(g),
-                    style = MaterialTheme.typography.displaySmall.copy(shadow = Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 16f)),
-                    color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                )
+                Text(gameTitle(g), style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 InfoChip(systemName(g.system), color)
+                if (g.remote) InfoChip("On RomM", null, Icons.Rounded.CloudDownload)
                 user.lastPlayed[g.id]?.let { InfoChip(timeAgo(it), null) }
-                if (user.raIds[g.id] != null) InfoChip("Achievements", Color(0xFFFFC94D), Icons.Rounded.EmojiEvents)
+                if (user.raIds[g.id] != null) InfoChip("Trophies", Color(0xFFFFC94D), Icons.Rounded.EmojiEvents)
             }
         }
     }
-    Spacer(Modifier.height(16.dp))
-    Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-        val primary = MaterialTheme.colorScheme.primary
-        Row(
-            Modifier.height(54.dp).shadow(14.dp, RoundedCornerShape(50), ambientColor = primary, spotColor = primary)
-                .clip(RoundedCornerShape(50))
-                .background(Brush.horizontalGradient(listOf(primary, lerp(primary, MaterialTheme.colorScheme.tertiary, 0.5f))))
-                .tappable(RoundedCornerShape(50)) { launch(game, null) }
-                .padding(horizontal = 28.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Spacer(Modifier.height(10.dp))
+    Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        val dl = game.rommId?.let { downloads[it] }
+        val busy = game.remote && (dl is io.github.audxius.pillar.data.DownloadState.Queued || dl is io.github.audxius.pillar.data.DownloadState.Running)
+        PrimaryAction(
+            label = when {
+                busy && dl is io.github.audxius.pillar.data.DownloadState.Running -> "${(dl.fraction * 100).toInt()}%"
+                busy -> "Waiting"
+                game.remote -> "Download & play"
+                else -> "Play"
+            },
+            icon = if (game.remote) Icons.Rounded.CloudDownload else Icons.Rounded.PlayArrow,
+            modifier = Modifier.weight(1f).height(54.dp),
+            progress = (dl as? io.github.audxius.pillar.data.DownloadState.Running)?.fraction?.takeIf { busy },
+        ) { if (!busy) launch(game, null) }
+        Spacer(Modifier.width(10.dp))
+        StyledIconButton(Icons.Rounded.Info, "Details", size = 54.dp) { nav.navigate(Routes.game(game.id, "home")) }
+        Spacer(Modifier.width(10.dp))
+        StyledIconButton(
+            if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Favorite", size = 54.dp,
+            tint = if (fav) Color(0xFFFFC94D) else MaterialTheme.colorScheme.onSurface,
         ) {
-            Icon(Icons.Rounded.PlayArrow, null, tint = primary.onColor(), modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Play", style = MaterialTheme.typography.titleMedium, color = primary.onColor())
-        }
-        Spacer(Modifier.width(10.dp))
-        GlassCircle(Icons.Rounded.Info, "Details") { nav.navigate(Routes.game(game.id, "home")) }
-        Spacer(Modifier.width(10.dp))
-        GlassCircle(if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Favorite", tint = if (fav) Color(0xFFFFD54F) else Color.White) {
             scope.launch { graph.store.updateUser { u -> u.copy(favorites = if (fav) u.favorites - game.id else u.favorites + game.id) } }
         }
     }
@@ -341,45 +322,35 @@ private fun GameInfo(game: Game) {
 
 @Composable
 private fun InfoChip(text: String, dot: Color?, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
+    val (bg, fg, rim) = chipColors(false)
     Row(
-        Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.4f))
-            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(50))
-            .padding(horizontal = 11.dp, vertical = 5.dp),
+        Modifier.clip(RoundedCornerShape(50)).background(bg).border(1.dp, rim, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, tint = dot ?: Color.White, modifier = Modifier.size(14.dp))
+            Icon(icon, null, tint = dot ?: fg, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(5.dp))
         } else if (dot != null) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(dot))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 1)
+        Text(text, style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1)
     }
 }
 
 @Composable
-private fun GlassCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color = Color.White, onClick: () -> Unit) {
-    Box(
-        Modifier.size(54.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
-            .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-            .tappable(CircleShape, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp)) }
-}
-
-@Composable
 private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, onLongPress: (Game) -> Unit) {
+    val graph = LocalGraph.current
     val settings = LocalSettings.current
     val launch = rememberGameLauncher()
     val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
     val corner = LocalCorner.current
-    val itemHeight = 168.dp
-    val itemWidth = itemHeight * settings.coverShape.ratio()
-    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.16f + 8.dp)) {
+    val aspects by graph.artwork.aspects.collectAsStateWithLifecycle()
+    val itemHeight = 196.dp
+    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.14f + 10.dp)) {
         // Side padding that lets the first and last cover sit in the middle.
-        val side = ((maxWidth - itemWidth) / 2).coerceAtLeast(0.dp)
+        val side = ((maxWidth - itemHeight * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
         LazyRow(
             state = state,
             flingBehavior = rememberSnapFlingBehavior(state),
@@ -390,24 +361,26 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
         ) {
             itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
                 val focused = index == selectedIndex
-                val scale by androidx.compose.animation.core.animateFloatAsState(
-                    if (focused) 1.14f else 0.92f, androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 400f), label = "s",
-                )
-                val alpha by androidx.compose.animation.core.animateFloatAsState(if (focused) 1f else 0.7f, label = "a")
+                val scale by animateFloatAsState(if (focused) 1.12f else 0.9f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "s")
+                val alpha by animateFloatAsState(if (focused) 1f else 0.65f, label = "a")
                 val glow = systemColor(g.system)
+                // Uniform tiles by default; with "Real shape" each cover sizes to its art.
+                val ratio = if (settings.coverShape == io.github.audxius.pillar.data.CoverShape.NATURAL) {
+                    (aspects[g.id] ?: graph.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.8f)
+                } else settings.coverShape.ratio()
                 GameCover(
                     g,
-                    Modifier.width(itemWidth)
+                    Modifier.height(itemHeight).width(itemHeight * ratio)
                         .graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha }
                         .then(
-                            if (focused) Modifier.shadow(22.dp, RoundedCornerShape(corner * 0.7f), ambientColor = glow, spotColor = glow)
-                                .border(2.5.dp, Color.White, RoundedCornerShape(corner * 0.7f))
+                            if (focused) Modifier.shadow(20.dp, RoundedCornerShape(corner * 0.7f), ambientColor = glow, spotColor = glow)
                             else Modifier
                         )
                         .tappable(RoundedCornerShape(corner * 0.7f), onLongClick = { onLongPress(g) }) {
                             if (focused) launch(g, null) else scope.launch { state.animateScrollToItem(index) }
                         },
                     sharedKey = "cover-home-${g.id}",
+                    ratio = ratio,
                     compact = true,
                 )
             }
@@ -422,7 +395,7 @@ fun EmptyLibraryCardPublic() {
     io.github.audxius.pillar.ui.components.EmptyState(
         Icons.Rounded.PlayArrow,
         "Let's find your games",
-        "Point Pillar at your ROMs folder. It should contain one folder per system, such as snes, gba or psx.",
+        "Point Pillar at your ROMs folder (one folder per system, such as snes, gba or psx), or connect RomM to see your whole server here.",
         action = "Choose ROM folder",
         onAction = { nav.navigate(Routes.settingsPage(io.github.audxius.pillar.ui.settings.SettingsPage.LIBRARY)) },
     )

@@ -105,6 +105,8 @@ import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.Palettes
+import io.github.audxius.pillar.ui.theme.styledSurface
+import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.launch
 
 const val REPO_URL = "https://github.com/Audxius/Pillar"
@@ -190,6 +192,50 @@ private fun AppearancePage() {
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             update { it.copy(backgroundImageUri = uri.toString(), background = BackgroundStyle.IMAGE) }
+        }
+    }
+
+    SettingsGroup("Style") {
+        Text(
+            "Each style changes the backdrop, panels, buttons and dock, and picks a matching palette and font you can still change below.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            io.github.audxius.pillar.ui.theme.StyleSpecs.forEach { spec ->
+                val selected = s.uiStyle == spec.style
+                Column(
+                    Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+                        .border(if (selected) 2.5.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
+                        .tappable(RoundedCornerShape(18.dp)) {
+                            update {
+                                it.copy(
+                                    uiStyle = spec.style, palette = spec.presetPalette, themeMode = spec.presetMode,
+                                    font = spec.presetFont, cornerRadius = spec.presetCorner, customAccent = null,
+                                    dynamicColor = false, background = BackgroundStyle.STYLE,
+                                )
+                            }
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // A small live preview of the style.
+                    CompositionLocalProvider(io.github.audxius.pillar.ui.theme.LocalStyle provides spec.style) {
+                        Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))) {
+                            io.github.audxius.pillar.ui.theme.StyleBackdrop(
+                                androidx.compose.ui.graphics.Color(0xFF8B6CFF), androidx.compose.ui.graphics.Color(0xFF3DD6F5),
+                                androidx.compose.ui.graphics.Color(0xFFFF5CA8), animate = false,
+                            )
+                            Box(
+                                Modifier.align(Alignment.Center).size(width = 70.dp, height = 40.dp).styledSurface(RoundedCornerShape(12.dp))
+                            )
+                        }
+                    }
+                    Text(spec.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp), maxLines = 1)
+                    Text(spec.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 3,
+                        modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 10.dp))
+                }
+            }
         }
     }
 
@@ -282,7 +328,7 @@ private fun AppearancePage() {
     SettingsGroup("Background") {
         SettingChoice(
             "Style",
-            listOf(BackgroundStyle.ART to "Game art", BackgroundStyle.AURORA to "Aurora", BackgroundStyle.GRADIENT to "Gradient", BackgroundStyle.SOLID to "Solid", BackgroundStyle.IMAGE to "Image"),
+            listOf(BackgroundStyle.STYLE to "Style default", BackgroundStyle.ART to "Game art", BackgroundStyle.AURORA to "Aurora", BackgroundStyle.GRADIENT to "Gradient", BackgroundStyle.SOLID to "Solid", BackgroundStyle.IMAGE to "Image"),
             s.background,
         ) { b ->
             if (b == BackgroundStyle.IMAGE && s.backgroundImageUri == null) pickImage.launch(arrayOf("image/*"))
@@ -295,7 +341,7 @@ private fun AppearancePage() {
             }
             SettingSlider("Dim", s.backgroundDim, 0f..0.9f, label = { "${(it * 100).toInt()}%" }) { v -> update { it.copy(backgroundDim = v) } }
         }
-        if (s.background == BackgroundStyle.AURORA || s.background == BackgroundStyle.ART) {
+        if (s.background == BackgroundStyle.AURORA || s.background == BackgroundStyle.ART || s.background == BackgroundStyle.STYLE) {
             SettingSwitch("Animate", "Slowly drifting colors", s.animateBackground) { v -> update { it.copy(animateBackground = v) } }
         }
         SettingSwitch("Ambient color", "Tint the background with the current platform or game", s.ambientColor) { v -> update { it.copy(ambientColor = v) } }
@@ -311,9 +357,10 @@ private fun AppearancePage() {
             description = "SteamGridDB options need an API key (Settings → Library). Square icons look best with the square shape.",
         ) { c -> update { it.copy(coverStyle = c, coverShape = if (c == CoverStyle.SQUARE) CoverShape.SQUARE else it.coverShape) } }
         SettingSwitch("Crop to fill", "Off shows the whole image over a blurred backdrop", s.coverCrop) { v -> update { it.copy(coverCrop = v) } }
+        SettingSwitch("Game logos", "Show logos instead of plain titles where available (sized to match each other)", s.showLogos) { v -> update { it.copy(showLogos = v) } }
         SettingChoice(
             "Cover shape",
-            listOf(CoverShape.BOX to "Box (3:4)", CoverShape.SQUARE to "Square", CoverShape.WIDE to "Wide (4:3)"),
+            listOf(CoverShape.NATURAL to "Real shape", CoverShape.BOX to "Box (3:4)", CoverShape.SQUARE to "Square", CoverShape.WIDE to "Wide (4:3)"),
             s.coverShape,
         ) { c -> update { it.copy(coverShape = c) } }
         SettingSlider("Grid columns", s.gridColumns.toFloat(), 2f..5f, steps = 2, label = { "${it.toInt()}" }) { v -> update { it.copy(gridColumns = v.toInt()) } }
@@ -753,6 +800,24 @@ private fun RommPage() {
             }
         }
         status?.let { (msg, ok) -> StatusLine(msg, ok) }
+    }
+    if (s.rommConfigured) {
+        val update = rememberSettingsUpdater()
+        val romCount by graph.rommRepo.games.collectAsStateWithLifecycle()
+        val syncing by graph.rommRepo.syncing.collectAsStateWithLifecycle()
+        val error by graph.rommRepo.error.collectAsStateWithLifecycle()
+        SettingsGroup("Library") {
+            SettingSwitch(
+                "Show RomM games in my library",
+                "Games that aren't on this device appear everywhere with a cloud badge. Play downloads them first.",
+                s.rommInLibrary,
+            ) { v -> update { it.copy(rommInLibrary = v) } }
+            SettingRow(
+                if (syncing) "Refreshing…" else "Refresh RomM library",
+                error ?: "${romCount.size} games on the server",
+                onClick = if (syncing) null else ({ graph.rommRepo.refresh(force = true) }),
+            ) { if (syncing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
+        }
     }
 }
 

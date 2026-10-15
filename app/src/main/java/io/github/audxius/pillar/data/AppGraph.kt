@@ -14,10 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import io.github.audxius.pillar.BuildConfig
 import okhttp3.OkHttpClient
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 sealed interface Loadable<out T> {
@@ -48,10 +50,82 @@ class AppGraph(val context: Context) {
     val romm = RommClient(http) { store.settings.value }
     val raClient = RaClient(context, http) { store.settings.value }
     val ra = RaRepository(raClient, store, scope)
-    val rommRepo = RommRepository(romm, store, scope)
+    val rommRepo = RommRepository(context, romm, store, catalog, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
     val artwork = ArtworkRepository(context, http, catalog, store, scope)
     val saveSync = SaveSync(context, http, store, scope)
+
+    /**
+     * The one library: games on this device plus RomM games that aren't downloaded yet. A RomM game
+     * already on the device (linked by a download, or same system and file name) shows once.
+     */
+    val allGames: StateFlow<List<Game>> = kotlinx.coroutines.flow.combine(
+        library.games, rommRepo.games, store.userData, store.settings,
+    ) { local, catalogRoms, user, s ->
+        if (!s.rommInLibrary || !s.rommConfigured || catalogRoms.isEmpty()) return@combine local
+        // Only links whose local file still exists hide the RomM entry.
+        val localIds = local.mapTo(HashSet()) { it.id }
+        val linked = user.rommIds.filterKeys { it in localIds }.values.toSet()
+        val localKeys = HashSet<String>()
+        local.forEach { g ->
+            localKeys += g.system + "/" + g.fileName.lowercase()
+            localKeys += g.system + "/" + g.baseName.lowercase()
+        }
+        val remote = catalogRoms.mapNotNull { rom ->
+            if (rom.id in linked) return@mapNotNull null
+            val system = catalog.resolveRommPlatform(rom.platformSlug, rom.platformFsSlug)
+                ?: rom.platformFsSlug?.takeIf { it.isNotBlank() } ?: rom.platformSlug ?: "romm"
+            val name = rom.fsName.lowercase()
+            if ("$system/$name" in localKeys || "$system/${name.substringBeforeLast('.')}" in localKeys) return@mapNotNull null
+            Game(
+                id = "romm:${rom.id}",
+                system = system,
+                title = rom.title,
+                fileName = rom.fsName,
+                docUri = "",
+                treeUri = "",
+                size = rom.fsSizeBytes,
+                modified = rom.createdAt?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() } ?: 0,
+                rommId = rom.id,
+                remoteCover = romm.coverUrl(rom),
+            )
+        }
+        (local + remote).sortedBy { it.title.lowercase() }
+    }.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+
+    fun gameById(id: String): Game? = allGames.value.firstOrNull { it.id == id } ?: library.gameById(id)
+        // A RomM entry that has just been downloaded now lives under its local id.
+        ?: id.removePrefix("romm:").takeIf { id.startsWith("romm:") }?.toIntOrNull()?.let { rid ->
+            localFor(rid) ?: (downloads.states.value[rid] as? DownloadState.Done)?.gameId?.let(library::gameById)
+        }
+
+    /** The local copy of a RomM game, once it has been downloaded. */
+    fun localFor(rommId: Int): Game? {
+        val user = store.userData.value
+        return library.games.value.firstOrNull { user.rommIds[it.id] == rommId }
+    }
+
+    /** Starts a RomM download and launches the game as soon as it lands. */
+    fun downloadAndPlay(game: Game) {
+        val rom = game.rommId?.let { rommRepo.rom(it) } ?: return
+        downloads.enqueue(rom, playAfter = true)
+    }
+
+    init {
+        scope.launch {
+            downloads.states.collect { states ->
+                for (s in states.values) {
+                    if (s !is DownloadState.Done || !downloads.consumePlayAfter(s.rom.id)) continue
+                    val local = s.gameId?.let { library.gameById(it) } ?: localFor(s.rom.id) ?: continue
+                    val settingsNow = store.settings.value
+                    val cmd = launcher.selectCommand(local, settingsNow, store.userData.value) ?: continue
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        if (launcher.launch(local, cmd) == LaunchResult.Started) markPlayed(local)
+                    }
+                }
+            }
+        }
+    }
 
     fun markPlayed(game: Game) {
         scope.launch {
@@ -122,36 +196,78 @@ class RaRepository(private val client: RaClient, private val store: SettingsStor
     }
 }
 
-class RommRepository(private val client: RommClient, private val store: SettingsStore, private val scope: CoroutineScope) {
+class RommRepository(
+    context: Context,
+    private val client: RommClient,
+    private val store: SettingsStore,
+    private val catalog: SystemCatalog,
+    private val scope: CoroutineScope,
+) {
     private val _platforms = MutableStateFlow<Loadable<List<RommPlatform>>>(Loadable.Idle)
     val platforms: StateFlow<Loadable<List<RommPlatform>>> = _platforms.asStateFlow()
-    private val _latest = MutableStateFlow<Loadable<List<RommRom>>>(Loadable.Idle)
-    val latest: StateFlow<Loadable<List<RommRom>>> = _latest.asStateFlow()
+    private val catalogFile = File(context.filesDir, "romm-catalog.json")
+    private val _games = MutableStateFlow<List<RommRom>>(emptyList())
+    /** Every game on the RomM server, cached on the device so the library works offline too. */
+    val games: StateFlow<List<RommRom>> = _games.asStateFlow()
+    private val _syncing = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
     private var lastRefresh = 0L
+    private val mutex = kotlinx.coroutines.sync.Mutex()
 
     init {
+        scope.launch(Dispatchers.IO) {
+            val cached = runCatching {
+                PillarJson.decodeFromString(kotlinx.serialization.builtins.ListSerializer(RommRom.serializer()), catalogFile.readText())
+            }.getOrNull()
+            if (cached != null && _games.value.isEmpty()) _games.value = cached
+        }
         scope.launch {
             store.settings.map { listOf(it.rommUrl, it.rommUser, it.rommPassword, it.rommToken) }
                 .distinctUntilChanged().drop(1).collect {
                     lastRefresh = 0
-                    _platforms.value = Loadable.Idle; _latest.value = Loadable.Idle
+                    _platforms.value = Loadable.Idle
                     refresh(force = true)
                 }
         }
     }
 
+    fun rom(id: Int): RommRom? = _games.value.firstOrNull { it.id == id }
+
     fun refresh(force: Boolean = false) {
         if (!store.settings.value.rommConfigured) return
         val now = System.currentTimeMillis()
-        if (!force && now - lastRefresh < 2 * 60 * 1000) return
+        if (!force && now - lastRefresh < 10 * 60 * 1000) return
         lastRefresh = now
-        scope.launch {
-            if (_platforms.value !is Loadable.Ready) _platforms.value = Loadable.Loading
-            _platforms.value = runCatching { Loadable.Ready(client.platforms()) }.getOrElse { Loadable.Error(it.message ?: "Failed") }
-            if (_latest.value !is Loadable.Ready) _latest.value = Loadable.Loading
-            _latest.value = runCatching {
-                Loadable.Ready(client.roms(limit = 20, orderBy = "id", orderDir = "desc").items)
-            }.getOrElse { Loadable.Error(it.message ?: "Failed") }
+        scope.launch(Dispatchers.IO) {
+            if (!mutex.tryLock()) return@launch
+            try {
+                _syncing.value = true
+                val plats = runCatching { client.platforms() }
+                _platforms.value = plats.fold({ Loadable.Ready(it) }, { Loadable.Error(it.message ?: "Failed") })
+                plats.getOrNull()?.forEach { p ->
+                    if (catalog.resolveRommPlatform(p.slug, p.fsSlug) == null) catalog.extraNames[p.fsSlug.ifBlank { p.slug }] = p.title
+                }
+                val all = ArrayList<RommRom>()
+                var offset = 0
+                while (true) {
+                    val page = client.roms(offset = offset, limit = 500)
+                    all += page.items
+                    offset += page.items.size
+                    if (page.items.isEmpty() || offset >= page.total) break
+                }
+                _games.value = all
+                _error.value = null
+                runCatching {
+                    catalogFile.writeText(PillarJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(RommRom.serializer()), all))
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't reach RomM"
+            } finally {
+                _syncing.value = false
+                mutex.unlock()
+            }
         }
     }
 }

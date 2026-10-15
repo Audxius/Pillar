@@ -83,9 +83,6 @@ import io.github.audxius.pillar.ui.screens.HomeScreen
 import io.github.audxius.pillar.ui.screens.LibraryScreen
 import io.github.audxius.pillar.ui.screens.OnboardingScreen
 import io.github.audxius.pillar.ui.screens.PlatformScreen
-import io.github.audxius.pillar.ui.screens.RommRomScreen
-import io.github.audxius.pillar.ui.screens.RommPlatformScreen
-import io.github.audxius.pillar.ui.screens.RommScreen
 import io.github.audxius.pillar.ui.screens.SavesScreen
 import io.github.audxius.pillar.ui.screens.SearchScreen
 import io.github.audxius.pillar.ui.settings.SettingsPage
@@ -95,12 +92,12 @@ import io.github.audxius.pillar.ui.theme.LocalIsDark
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.PillarTheme
+import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.launch
 
 object Routes {
     const val HOME = "home"
     const val LIBRARY = "library"
-    const val ROMM = "romm"
     const val RA = "ra"
     const val SAVES = "saves"
     const val SETTINGS = "settings"
@@ -108,8 +105,6 @@ object Routes {
     const val ONBOARDING = "onboarding"
     fun platform(system: String) = "platform/${Uri.encode(system)}"
     fun game(id: String, src: String = "x") = "game?id=${Uri.encode(id)}&src=${Uri.encode(src)}"
-    fun rommPlatform(id: Int, name: String) = "romm/platform/$id?name=${Uri.encode(name)}"
-    fun rommRom(id: Int) = "romm/rom/$id"
     fun settingsPage(page: SettingsPage) = "settings/${page.name}"
 }
 
@@ -118,7 +113,6 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val Tabs = listOf(
     Tab(Routes.HOME, "Home", Icons.Rounded.Home, Color(0xFFFF9F43)),
     Tab(Routes.LIBRARY, "Library", Icons.Rounded.GridView, Color(0xFF4D9DFF)),
-    Tab(Routes.ROMM, "RomM", Icons.Rounded.Cloud, Color(0xFF2ED47A)),
     Tab(Routes.SAVES, "Saves", Icons.Rounded.Save, Color(0xFF9B7BFF)),
     Tab(Routes.RA, "Trophies", Icons.Rounded.EmojiEvents, Color(0xFFFFC542)),
     Tab(Routes.SETTINGS, "Settings", Icons.Rounded.Tune, Color(0xFFFF6B9A)),
@@ -215,7 +209,6 @@ private fun PillarNavHost(nav: NavHostController, start: String) {
         composable(Routes.ONBOARDING, content = scoped { OnboardingScreen() })
         composable(Routes.HOME, content = scoped { HomeScreen() })
         composable(Routes.LIBRARY, content = scoped { LibraryScreen() })
-        composable(Routes.ROMM, content = scoped { RommScreen() })
         composable(Routes.RA, content = scoped { AchievementsScreen() })
         composable(Routes.SAVES, content = scoped { SavesScreen() })
         composable(Routes.SETTINGS, content = scoped { SettingsScreen(null) })
@@ -246,23 +239,6 @@ private fun PillarNavHost(nav: NavHostController, start: String) {
                 GameDetailScreen(entry.arguments?.getString("id").orEmpty(), entry.arguments?.getString("src") ?: "x")
             }
         }
-        composable(
-            "romm/platform/{id}?name={name}",
-            arguments = listOf(
-                navArgument("id") { type = NavType.IntType },
-                navArgument("name") { type = NavType.StringType; defaultValue = "" },
-            ),
-        ) { entry ->
-            CompositionLocalProvider(LocalNavScope provides this) {
-                RommPlatformScreen(entry.arguments?.getInt("id") ?: 0, entry.arguments?.getString("name").orEmpty())
-            }
-        }
-        composable(
-            "romm/rom/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.IntType }),
-        ) { entry ->
-            CompositionLocalProvider(LocalNavScope provides this) { RommRomScreen(entry.arguments?.getInt("id") ?: 0) }
-        }
     }
 }
 
@@ -276,9 +252,8 @@ private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .fillMaxWidth()
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (settings.glassCards) 0.9f else 1f))
-            .border(1.dp, if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f), shape)
+            .styledSurface(shape, strong = true)
+            .background(MaterialTheme.colorScheme.background.copy(alpha = if (dark) 0.55f else 0.35f))
             .padding(6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -319,7 +294,13 @@ fun rememberGameLauncher(): (Game, EmuCommand?) -> Unit {
     val snackbar = LocalSnackbar.current
     val scope = rememberCoroutineScope()
     return remember(settings, user) {
-        { game, override ->
+        play@{ game: Game, override: EmuCommand? ->
+            if (game.remote) {
+                // Not on this device yet: download from RomM, then it starts by itself.
+                graph.downloadAndPlay(game)
+                scope.launch { snackbar.showSnackbar("Downloading ${game.title}. It will start when it's ready.") }
+                return@play
+            }
             val cmd = override ?: graph.launcher.selectCommand(game, settings, user)
             if (cmd == null) {
                 scope.launch { snackbar.showSnackbar("No emulator is set up for ${graph.catalog.fullName(game.system)}") }

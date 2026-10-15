@@ -219,6 +219,7 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         LocalUserData provides user,
         LocalAmbient provides ambient,
         LocalAmbientArt provides ambientArt,
+        LocalStyle provides settings.uiStyle,
         LocalCorner provides corner,
         LocalPalette provides effectivePalette,
         LocalIsDark provides dark,

@@ -41,3 +41,22 @@ class ThumbMatchTest {
     @Test fun dotsInTitlesSurvive() =
         assertEquals("Super Mario Bros. 3 (USA)", ThumbMatch.best("Super Mario Bros. 3.nes", listOf("Super Mario Bros. 3 (USA)", "Super Mario Bros. (World)")))
 }
+
+class SgdbMatchTest {
+    @Test fun hacksWithExtraWordsAreRejected() {
+        val results = listOf("Pokémon FireRed Generations", "Pokémon FireRed Version", "Pokémon LeafGreen Version")
+        assertEquals(1, io.github.audxius.pillar.data.SgdbMatch.pick("Pokemon - FireRed Version", results))
+    }
+
+    @Test fun onlyAHackMeansNoMatch() =
+        assertNull(io.github.audxius.pillar.data.SgdbMatch.pick("Pokemon - FireRed Version", listOf("Pokémon FireRed Generations", "Pokémon FireRed Rocket Edition")))
+
+    @Test fun punctuationAndArticles() =
+        assertEquals(0, io.github.audxius.pillar.data.SgdbMatch.pick("Legend of Zelda, The - A Link to the Past", listOf("The Legend of Zelda: A Link to the Past", "The Legend of Zelda")))
+
+    @Test fun sequelsAreDistinct() =
+        assertEquals(1, io.github.audxius.pillar.data.SgdbMatch.pick("Jet Set Radio", listOf("Jet Set Radio Future", "Jet Set Radio")))
+
+    @Test fun accentsDontMatter() =
+        assertEquals(ThumbMatch.key("Pokemon Emerald"), ThumbMatch.key("Pokémon Emerald"))
+}

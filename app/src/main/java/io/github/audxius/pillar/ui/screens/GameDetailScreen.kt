@@ -2,7 +2,9 @@
 
 package io.github.audxius.pillar.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -69,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.data.DownloadState
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.RaAchievement
 import io.github.audxius.pillar.data.RaGameProgress
@@ -76,6 +80,9 @@ import io.github.audxius.pillar.data.RommRom
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.Glass
+import io.github.audxius.pillar.ui.components.GameLogo
+import io.github.audxius.pillar.ui.components.Gloss
+import io.github.audxius.pillar.ui.components.PrimaryAction
 import io.github.audxius.pillar.ui.components.rememberArt
 import io.github.audxius.pillar.ui.components.rememberHeroSources
 import io.github.audxius.pillar.ui.components.fadeBottom
@@ -102,7 +109,14 @@ import kotlinx.coroutines.launch
 fun GameDetailScreen(id: String, src: String) {
     val graph = LocalGraph.current
     val nav = LocalNav.current
-    val game = remember(id) { graph.library.gameById(id) }
+    val all by graph.allGames.collectAsStateWithLifecycle()
+    val user = LocalUserData.current
+    // A RomM game that has since been downloaded shows its local copy.
+    val downloads by graph.downloads.states.collectAsStateWithLifecycle()
+    val game = remember(id, all, user.rommIds, downloads) {
+        val g = graph.gameById(id)
+        g?.rommId?.takeIf { g.remote }?.let { graph.localFor(it) } ?: g
+    }
     if (game == null) {
         Column(Modifier.fillMaxSize()) {
             ScreenHeader("Game not found", onBack = { nav.popBackStack() })
@@ -143,6 +157,7 @@ private fun GameDetail(game: Game, src: String) {
     var renaming by remember { mutableStateOf(false) }
     var confirmHide by remember { mutableStateOf(false) }
     var confirmLaunch by remember { mutableStateOf(false) }
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     val pickCover = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -153,59 +168,76 @@ private fun GameDetail(game: Game, src: String) {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // Hero art with the cover floating over its bottom edge.
-            Box(Modifier.fillMaxWidth().height(400.dp)) {
-                MultiImage(hero, Modifier.fillMaxWidth().height(300.dp).fadeBottom(), onColor = { c -> accent = c; if (settings.ambientColor) ambient.value = c }) {
+            // The art gets its own framed panel, shown whole, so nothing is drawn over its subject.
+            Box(
+                Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 64.dp).fillMaxWidth().aspectRatio(16f / 9f)
+                    .shadow(18.dp, RoundedCornerShape(corner), ambientColor = accent, spotColor = accent)
+                    .clip(RoundedCornerShape(corner))
+            ) {
+                MultiImage(hero, Modifier.matchParentSize(), fit = true, onColor = { c -> accent = c; if (settings.ambientColor) ambient.value = c }) {
                     Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(sysColor, lerp(sysColor, Color.Black, 0.7f)))))
                 }
-                Box(
-                    Modifier.fillMaxWidth().height(120.dp).background(
-                        Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.4f), 1f to Color.Transparent)
-                    )
-                )
-                GameCover(
-                    game,
-                    Modifier.align(Alignment.BottomCenter).width(178.dp)
-                        .shadow(28.dp, RoundedCornerShape(corner * 0.7f), ambientColor = accent, spotColor = accent)
-                        .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(corner * 0.7f)),
-                    sharedKey = "cover-$src-${game.id}",
-                )
+                Gloss(RoundedCornerShape(corner))
             }
 
-            Column(Modifier.padding(horizontal = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(16.dp))
-                if (logo != null) {
-                    AsyncImage(logo, gameTitle(game), Modifier.fillMaxWidth(0.75f).height(70.dp), contentScale = ContentScale.Fit)
-                    Spacer(Modifier.height(6.dp))
-                    Text(gameTitle(game), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    Text(gameTitle(game), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
-                }
-                Spacer(Modifier.height(10.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SystemChip(game.system)
-                    LibraryRepository.tags(game.fileName).take(4).forEach { Pill(it) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GameCover(
+                        game,
+                        Modifier.width(112.dp)
+                            .shadow(14.dp, RoundedCornerShape(corner * 0.7f), ambientColor = accent, spotColor = accent),
+                        sharedKey = "cover-$src-${game.id}",
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        var logoFailed by remember(logo) { mutableStateOf(false) }
+                        if (settings.showLogos && logo != null && !logoFailed) {
+                            GameLogo(logo, gameTitle(game), maxWidth = 210.dp, maxHeight = 84.dp, area = 9500f, onFailed = { logoFailed = true })
+                            Spacer(Modifier.height(4.dp))
+                            Text(gameTitle(game), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        } else {
+                            Text(gameTitle(game), style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            SystemChip(game.system)
+                            LibraryRepository.tags(game.fileName).take(3).forEach { Pill(it) }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(20.dp))
 
-                // Play
-                Row(
-                    Modifier.fillMaxWidth().height(62.dp)
-                        .shadow(16.dp, RoundedCornerShape(50), ambientColor = accent, spotColor = accent)
-                        .clip(RoundedCornerShape(50))
-                        .background(Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, lerp(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary, 0.55f))))
-                        .tappable(RoundedCornerShape(50)) { if (settings.confirmLaunch) confirmLaunch = true else launch(game, null) },
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val on = MaterialTheme.colorScheme.primary.onColor()
-                    Icon(Icons.Rounded.PlayArrow, null, tint = on, modifier = Modifier.size(32.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Play", style = MaterialTheme.typography.titleLarge, color = on)
+                // Play, or download from RomM first.
+                val downloads by graph.downloads.states.collectAsStateWithLifecycle()
+                val dl = game.rommId?.let { downloads[it] }
+                when {
+                    game.remote && (dl is DownloadState.Queued || dl is DownloadState.Running) -> PrimaryAction(
+                        if (dl is DownloadState.Running) "Downloading ${(dl.fraction * 100).toInt()}%" else "Waiting to download",
+                        Icons.Rounded.CloudDownload, Modifier.fillMaxWidth().height(60.dp),
+                        progress = (dl as? DownloadState.Running)?.fraction ?: 0f,
+                    ) { graph.downloads.cancel(game.rommId!!) }
+                    game.remote -> PrimaryAction("Download & play", Icons.Rounded.CloudDownload, Modifier.fillMaxWidth().height(60.dp)) {
+                        if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        graph.downloadAndPlay(game)
+                    }
+                    else -> PrimaryAction("Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(60.dp)) {
+                        if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
+                if (dl is DownloadState.Failed) {
+                    Text(dl.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                }
+                if (game.remote) {
+                    Text(
+                        "On your RomM server · ${formatBytes(game.size)}. It downloads to your ${systemName(game.system)} folder and starts when it's ready.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
                 Row(
-                    Modifier.clip(RoundedCornerShape(50)).tappable(RoundedCornerShape(50)) { emuSheet = true }
+                    Modifier.align(Alignment.CenterHorizontally).clip(RoundedCornerShape(50)).tappable(RoundedCornerShape(50)) { emuSheet = true }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -248,12 +280,12 @@ private fun GameDetail(game: Game, src: String) {
                 }
 
                 GameSaves(game)
-                user.rommIds[game.id]?.let { rommId -> RommInfo(rommId) }
+                (user.rommIds[game.id] ?: game.rommId)?.let { rommId -> RommInfo(rommId) }
                 if (settings.raConfigured) AchievementsSection(game)
 
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    game.path ?: game.fileName,
+                    if (game.remote) "RomM · ${game.fileName}" else game.path ?: game.fileName,
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
                 )
@@ -435,35 +467,7 @@ private fun AchievementsSection(game: Game) {
             }
             error != null -> Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             p == null -> Shimmer(Modifier.fillMaxWidth().height(60.dp))
-            p.achievements.isEmpty() -> Text("This game has no achievements yet.", style = MaterialTheme.typography.bodySmall)
-            else -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProgressRing(p.progress, Modifier.size(76.dp), color = Color(0xFFFFC94D), stroke = 7.dp) {
-                        Text("${(p.progress * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("${p.earned} of ${p.achievements.size} unlocked", style = MaterialTheme.typography.titleSmall)
-                        Text("${p.points} / ${p.totalPoints} points", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(p.title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                val gray = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 6) {
-                    p.achievements.sortedByDescending { it.earned }.forEach { a ->
-                        AsyncImage(
-                            if (a.earned) a.badgeUrl else a.lockedBadgeUrl, a.title,
-                            colorFilter = if (a.earned) null else gray,
-                            modifier = Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(10.dp))
-                                .border(if (a.earned) 2.dp else 0.dp, if (a.dateEarnedHardcore.isNullOrBlank()) Color.Transparent else Color(0xFFFFC94D), RoundedCornerShape(10.dp))
-                                .tappable(RoundedCornerShape(10.dp)) { selected = a },
-                        )
-                    }
-                    // Pad the last row so badges keep a consistent size.
-                    repeat((6 - p.achievements.size % 6) % 6) { Spacer(Modifier.weight(1f)) }
-                }
-            }
+            else -> AchievementList(p)
         }
     }
 

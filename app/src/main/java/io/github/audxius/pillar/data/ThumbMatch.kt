@@ -31,7 +31,9 @@ object ThumbMatch {
 
     /** Title words with articles moved, punctuation dropped and roman numerals turned into digits. */
     fun tokens(name: String): List<String> {
-        var t = stripTags(name).lowercase().replace('_', ' ').replace("&", " and ")
+        // "Pokémon" -> "pokemon", so accented and plain spellings match.
+        var t = java.text.Normalizer.normalize(stripTags(name), java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+            .lowercase().replace('_', ' ').replace("&", " and ")
         t = t.replace(articleRe, " ")
         return t.split(splitRe).filter { it.isNotEmpty() }.map { roman[it] ?: it }
     }
@@ -109,5 +111,33 @@ class ThumbIndex(names: Collection<String>) {
             }
         }
         return bestName
+    }
+}
+
+/**
+ * Picks the right SteamGridDB search result. SteamGridDB has many ROM hacks and fan games with
+ * near-identical names, so anything that adds words the title doesn't have (like
+ * "Pokémon FireRed Generations" for "Pokémon FireRed Version") is rejected.
+ */
+object SgdbMatch {
+    fun pick(title: String, names: List<String>): Int? {
+        val wantKey = ThumbMatch.key(title)
+        names.indexOfFirst { ThumbMatch.key(it) == wantKey }.takeIf { it >= 0 }?.let { return it }
+        val want = ThumbMatch.significant(ThumbMatch.tokens(title))
+        if (want.isEmpty()) return null
+        val wantNumbers = want.filter { it.all(Char::isDigit) }.toSet()
+        var best: Int? = null
+        var bestScore = 0.0
+        names.forEachIndexed { i, n ->
+            val have = ThumbMatch.significant(ThumbMatch.tokens(n))
+            if (have.filter { it.all(Char::isDigit) }.toSet() != wantNumbers) return@forEachIndexed
+            val extra = have - want
+            val missing = want - have
+            // Every word the result adds must be accounted for; allow one missing subtitle word.
+            if (extra.isNotEmpty() || missing.size > 1) return@forEachIndexed
+            val score = have.intersect(want).size.toDouble() / want.size - i * 0.01
+            if (score > bestScore) { bestScore = score; best = i }
+        }
+        return best
     }
 }

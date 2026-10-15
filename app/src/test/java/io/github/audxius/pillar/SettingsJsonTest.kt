@@ -41,8 +41,8 @@ class SettingsMigrationTest {
     fun oldAuroraInstallsMoveToGameArt() {
         val old = PillarJson.decodeFromString(AppSettings.serializer(), """{"background":"AURORA","homeWidgets":[{"type":"QUICK_APPS"}]}""")
         val n = old.normalized()
-        assertEquals(io.github.audxius.pillar.data.BackgroundStyle.ART, n.background)
-        assertEquals(2, n.schema)
+        assertEquals(io.github.audxius.pillar.data.BackgroundStyle.STYLE, n.background)
+        assertEquals(3, n.schema)
         // A user choosing aurora again later keeps it.
         assertEquals(io.github.audxius.pillar.data.BackgroundStyle.AURORA, n.copy(background = io.github.audxius.pillar.data.BackgroundStyle.AURORA).normalized().background)
     }

@@ -42,6 +42,8 @@ data class ArtSet(
     val resolvedAt: Long = 0,
     val libretroChecked: Boolean = false,
     val sgdbChecked: Boolean = false,
+    /** Bumped when matching rules change, so older results get looked up again. */
+    val v: Int = 0,
 )
 
 @Serializable
@@ -79,6 +81,13 @@ class ArtworkRepository(
     private val _art = MutableStateFlow<Map<String, ArtSet>>(emptyMap())
     val art: StateFlow<Map<String, ArtSet>> = _art.asStateFlow()
 
+    private val aspectFile = File(context.filesDir, "cover-aspects.json")
+    private val aspectSerializer = MapSerializer(String.serializer(), Float.serializer())
+    private val _aspects = MutableStateFlow<Map<String, Float>>(emptyMap())
+    /** Width / height of each game's cover as last loaded, so tiles size correctly before the image arrives. */
+    val aspects: StateFlow<Map<String, Float>> = _aspects.asStateFlow()
+    @Volatile private var aspectsDirty = false
+
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
     // Lookups that hit a network or API error wait a while before being retried.
     private val failedAt = ConcurrentHashMap<String, Long>()
@@ -91,12 +100,19 @@ class ArtworkRepository(
     init {
         scope.launch(Dispatchers.IO) {
             val saved = runCatching { PillarJson.decodeFromString(mapSerializer, cacheFile.readText()) }.getOrDefault(emptyMap())
+                .filterValues { it.v >= ART_VERSION }
             // Merge rather than replace: lookups may already have finished while the file was loading.
             _art.update { fresh -> saved + fresh }
+            val savedAspects = runCatching { PillarJson.decodeFromString(aspectSerializer, aspectFile.readText()) }.getOrDefault(emptyMap())
+            _aspects.update { fresh -> savedAspects + fresh }
             // Writes are batched so resolving a big library doesn't rewrite the file per game.
             while (true) {
                 delay(3000)
                 if (dirty) persist()
+                if (aspectsDirty) {
+                    aspectsDirty = false
+                    runCatching { aspectFile.writeText(PillarJson.encodeToString(aspectSerializer, _aspects.value)) }
+                }
             }
         }
     }
@@ -127,6 +143,14 @@ class ArtworkRepository(
 
     fun ensureAll(games: List<Game>) = games.forEach(::ensure)
 
+    fun recordAspect(gameId: String, ratio: Float) {
+        if (ratio <= 0f || ratio.isNaN()) return
+        val old = _aspects.value[gameId]
+        if (old != null && kotlin.math.abs(old - ratio) < 0.02f) return
+        _aspects.update { it + (gameId to ratio) }
+        aspectsDirty = true
+    }
+
     /** Forgets cached results so everything is looked up again (e.g. after adding an API key). */
     fun reset(gameId: String? = null) {
         _art.update { if (gameId == null) emptyMap() else it - gameId }
@@ -149,12 +173,12 @@ class ArtworkRepository(
             if (!set.libretroChecked) failedAt[game.id] = System.currentTimeMillis()
         }
         if (sgdb) {
-            val found = runCatching { sgdb(game) }.getOrNull()
+            val found = runCatching { sgdb(game, set.matchedName) }.getOrNull()
             // A failed request (network, bad key) is retried next time instead of being cached.
-            if (found != null) set = found.copy(boxart = set.boxart, snap = set.snap, libretroChecked = set.libretroChecked)
+            if (found != null) set = found.copy(boxart = set.boxart, snap = set.snap, matchedName = set.matchedName, libretroChecked = set.libretroChecked)
             else failedAt[game.id] = System.currentTimeMillis()
         }
-        set = set.copy(resolvedAt = System.currentTimeMillis())
+        set = set.copy(resolvedAt = System.currentTimeMillis(), v = ART_VERSION)
         _art.update { it + (game.id to set) }
         dirty = true
     }
@@ -225,15 +249,14 @@ class ArtworkRepository(
     }
 
     /** Returns a set with only the SteamGridDB fields filled, or null if the lookup failed. */
-    private suspend fun sgdb(game: Game): ArtSet? {
-        val title = store.userData.value.customTitle[game.id] ?: game.title
+    private suspend fun sgdb(game: Game, matchedName: String?): ArtSet? {
+        // Prefer the clean database title the file matched ("Pokemon - FireRed Version") over the file name.
+        val matched = matchedName?.let { LibraryRepository.cleanTitle("$it.x") }
+        val title = store.userData.value.customTitle[game.id] ?: matched ?: game.title
         val results = sgdbGet("/search/autocomplete/${Uri.encode(title)}")
             ?.let { runCatching { PillarJson.decodeFromJsonElement(ListSerializer(SgdbGame.serializer()), it) }.getOrNull() }
             ?: return ArtSet(sgdbChecked = true)
-        val wantKey = ThumbMatch.key(title)
-        val match = results.firstOrNull { ThumbMatch.key(it.name) == wantKey }
-            ?: results.firstOrNull { ThumbMatch.best(title, listOf(it.name)) != null }
-            ?: return ArtSet(sgdbChecked = true)
+        val match = SgdbMatch.pick(title, results.map { it.name })?.let { results[it] } ?: return ArtSet(sgdbChecked = true)
 
         fun List<SgdbImage>.pick() = maxByOrNull { it.score }?.url?.takeIf { it.isNotBlank() }
         val grid = sgdbImages("grids", match.id, mapOf("dimensions" to "600x900,342x482,660x930")).pick()
@@ -247,3 +270,6 @@ class ArtworkRepository(
     /** Checks an API key by running a search. */
     suspend fun testSgdb(): Boolean = runCatching { sgdbGet("/search/autocomplete/mario") != null }.getOrDefault(false)
 }
+
+/** 2: accent-insensitive titles and strict SteamGridDB matching (0.3.0). */
+private const val ART_VERSION = 2

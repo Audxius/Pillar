@@ -228,6 +228,7 @@ class LibraryRepository(
      */
     fun coverCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
         user.customCover[game.id]?.let(::add)
+        game.remoteCover?.let(::add)
         when (settings.coverStyle) {
             CoverStyle.SQUARE -> art?.sgdbSquare?.let(::add)
             CoverStyle.GRID -> art?.sgdbGrid?.let(::add)

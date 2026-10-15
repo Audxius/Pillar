@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +66,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -101,6 +103,9 @@ import io.github.audxius.pillar.ui.theme.LocalIsDark
 import io.github.audxius.pillar.ui.theme.LocalPalette
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
+import io.github.audxius.pillar.ui.theme.styledSurface
+import io.github.audxius.pillar.ui.theme.primaryActionFinish
+import io.github.audxius.pillar.ui.theme.StyleBackdrop
 import io.github.audxius.pillar.ui.theme.rememberFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -109,6 +114,7 @@ val LocalSharedScope = compositionLocalOf<SharedTransitionScope?> { null }
 val LocalNavScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
 
 fun CoverShape.ratio(): Float = when (this) {
+    CoverShape.NATURAL -> 0.75f
     CoverShape.BOX -> 0.75f
     CoverShape.SQUARE -> 1f
     CoverShape.WIDE -> 4f / 3f
@@ -199,6 +205,13 @@ fun PillarBackground(modifier: Modifier = Modifier) {
                 }
             }
             BackgroundStyle.AURORA -> Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
+            BackgroundStyle.STYLE -> {
+                StyleBackdrop(primary, palette.secondary, palette.tertiary, settings.animateBackground && settings.animations)
+                // Glassmorphism keeps a faint, heavily blurred hint of the focused game.
+                if (io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.GLASS) {
+                    ArtBackdrop(LocalAmbientArt.current.value, dark, bg, strength = 0.28f)
+                }
+            }
             BackgroundStyle.ART -> {
                 Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
                 ArtBackdrop(LocalAmbientArt.current.value, dark, bg)
@@ -245,18 +258,11 @@ fun Glass(
     padding: Dp = 0.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val settings = LocalSettings.current
     val s = shape ?: RoundedCornerShape(LocalCorner.current)
-    val dark = LocalIsDark.current
-    val base = if (settings.glassCards) {
-        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (dark) 0.55f else 0.72f)
-    } else MaterialTheme.colorScheme.surfaceContainerHigh
-    val fill = tint?.let { lerp(base, it, 0.18f).copy(alpha = base.alpha) } ?: base
     Column(
         modifier
-            .clip(s)
-            .background(fill)
-            .border(1.dp, if (dark) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.05f), s)
+            .styledSurface(s)
+            .then(if (tint != null) Modifier.background(tint.copy(alpha = 0.10f)) else Modifier)
             .padding(padding),
         content = content,
     )
@@ -273,7 +279,10 @@ fun MultiImage(
     contentScale: ContentScale = ContentScale.Crop,
     /** Show the whole image over a blurred, darkened copy of itself instead of cropping. */
     fit: Boolean = false,
+    /** In fit mode, inset the image so it sits like a case in a frame. */
+    fitInset: Dp = 0.dp,
     onColor: ((Color) -> Unit)? = null,
+    onAspect: ((Float) -> Unit)? = null,
     fallback: @Composable BoxScope.() -> Unit,
 ) {
     var index by remember(sources) { mutableIntStateOf(0) }
@@ -299,9 +308,11 @@ fun MultiImage(
                 model = ImageRequest.Builder(context).data(src).apply { if (onColor != null) allowHardware(false) }.build(),
                 contentDescription = null,
                 contentScale = if (fit) ContentScale.Fit else contentScale,
-                modifier = Modifier.matchParentSize(),
+                modifier = Modifier.matchParentSize().then(if (fit && fitInset > 0.dp) Modifier.padding(fitInset) else Modifier),
                 onSuccess = { state ->
                     loaded = true
+                    val img = state.result.image
+                    if (onAspect != null && img.height > 0) onAspect(img.width.toFloat() / img.height)
                     if (onColor != null) bitmapForColor = runCatching { state.result.image.toBitmap() }.getOrNull()
                 },
                 onError = { index++ },
@@ -381,15 +392,39 @@ fun GameCover(
     ratio: Float? = null,
     compact: Boolean = false,
 ) {
+    val graph = LocalGraph.current
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val sources = rememberCoverSources(game)
     val title = gameTitle(game)
-    val r = ratio ?: settings.coverShape.ratio()
+    val aspects by graph.artwork.aspects.collectAsStateWithLifecycle()
+    val natural = ratio == null && settings.coverShape == CoverShape.NATURAL
+    val known = aspects[game.id]
+    // Natural shape: every cover keeps its real proportions (square GBA boxes, wide SNES boxes...).
+    val target = ratio ?: if (natural) (known ?: graph.catalog.boxRatio(game.system)).coerceIn(0.5f, 1.8f) else settings.coverShape.ratio()
+    val r by animateFloatAsState(target, tween(250), label = "coverRatio")
     val shape = RoundedCornerShape(LocalCorner.current * 0.7f)
     Box(modifier.aspectRatio(r).sharedCover(sharedKey).clip(shape)) {
-        MultiImage(sources, Modifier.matchParentSize(), fit = !settings.coverCrop) { CoverPlaceholder(title, game.system, compact) }
+        // Uniform tiles: art close to the tile's shape fills it (a barely visible trim); art of a
+        // clearly different shape is shown whole, framed over a blurred copy of itself.
+        val fill = settings.coverCrop || (known != null && (natural || kotlin.math.abs(kotlin.math.ln(known / target)) < 0.16f))
+        MultiImage(
+            sources, Modifier.matchParentSize(),
+            fit = !fill,
+            fitInset = if (compact) 5.dp else 9.dp,
+            onAspect = { a -> graph.artwork.recordAspect(game.id, a) },
+        ) { CoverPlaceholder(title, game.system, compact) }
         Gloss(shape)
+        if (game.remote) {
+            // Lives on RomM: downloads when you play it.
+            Box(
+                Modifier.align(Alignment.TopStart).padding(6.dp).size(22.dp).clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.CloudDownload, "On RomM", tint = Color.White, modifier = Modifier.size(14.dp))
+            }
+        }
         if (game.id in user.favorites) {
             Box(
                 Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape)
@@ -653,18 +688,18 @@ fun BoxScope.Gloss(shape: Shape) {
  * back to whatever is drawn underneath when there's no art.
  */
 @Composable
-private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color) {
+private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, strength: Float = 1f) {
     androidx.compose.animation.Crossfade(
         targetState = sources?.firstOrNull()?.let { sources },
         animationSpec = tween(700),
         label = "artBackdrop",
     ) { current ->
         if (current == null) return@Crossfade
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = strength }) {
             MultiImage(
                 current,
                 Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }
-                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(28.dp) else Modifier),
+                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(if (strength < 1f) 48.dp else 28.dp) else Modifier),
             ) {}
             Box(
                 Modifier.fillMaxSize().background(
@@ -674,6 +709,43 @@ private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color) {
                         1f to bg.copy(alpha = if (dark) 0.92f else 0.9f),
                     )
                 )
+            )
+        }
+    }
+}
+
+/** The big call to action (Play / Download & play), drawn in the current style. Shows progress when given. */
+@Composable
+fun PrimaryAction(
+    label: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    progress: Float? = null,
+    onClick: () -> Unit,
+) {
+    val (brush, content) = io.github.audxius.pillar.ui.theme.primaryActionColors()
+    val shape = RoundedCornerShape(50)
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier
+            .shadow(14.dp, shape, ambientColor = primary, spotColor = primary)
+            .clip(shape)
+            .background(brush)
+            .tappable(shape, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (progress != null) {
+            Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(progress.coerceIn(0f, 1f)).background(Color.White.copy(alpha = 0.25f)))
+        }
+        Box(Modifier.matchParentSize().primaryActionFinish(shape))
+        Row(Modifier.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = content, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                label, maxLines = 1, color = content,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = if (content == Color.White) 0.35f else 0f), blurRadius = 6f),
+                ),
             )
         }
     }

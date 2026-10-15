@@ -28,9 +28,13 @@ Android 8.0 or newer.
 
 ## Features
 
-- **Built for portrait.** A full-screen home with the selected game's art, a snapping cover
-  carousel and shelves for Recent, Favorites and each system. Platform cards, cover grids and game
-  pages are laid out for tall screens. A widget feed layout and landscape are available too.
+- **Built for portrait.** The selected game's art in its own frame, a snapping cover carousel and
+  shelves for Recent, Favorites and each system. Cover tiles stay uniform: art that doesn't match
+  the tile is shown whole in a frame instead of being cropped.
+- **Three looks.** Glassmorphism (default), Frutiger Aero and Y2K, each with its own backdrop,
+  panels, buttons and dock.
+- **One library.** Games on your phone and on your RomM server show up together; RomM-only games
+  have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
   ES-DE). Multi-disc games and `.cue`/`.bin` sets show up once.
 - **200+ systems and hundreds of emulators.** Uses ES-DE's open Android system and emulator
@@ -45,10 +49,10 @@ Android 8.0 or newer.
   server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
   deletes anything on the server and backs up any save before replacing it.
-- **RomM.** Browse platforms, search, read game info and download games straight into the right
-  system folder. Multi-file games are extracted for you, and downloads keep going in the
-  background.
-- **RetroAchievements.** Profile card, recent unlocks, progress per game with a full badge grid.
+- **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
+  you, and downloads keep going in the background.
+- **RetroAchievements.** Profile, your games as expandable cards with unlocked and locked
+  achievements, and recent unlocks grouped by game.
   Local games are matched by title; RomM games use RomM's match. You can also set a game ID by hand.
 - **Customize everything.**
   - Theme: 8 palettes, any accent color, Material You, dark / AMOLED black / light.

@@ -13,12 +13,13 @@ val PillarJson = Json {
 
 @Serializable enum class ThemeMode { SYSTEM, DARK, AMOLED, LIGHT }
 @Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL }
-@Serializable enum class BackgroundStyle { ART, AURORA, GRADIENT, SOLID, IMAGE }
+@Serializable enum class BackgroundStyle { STYLE, ART, AURORA, GRADIENT, SOLID, IMAGE }
+@Serializable enum class UiStyle { GLASS, AERO, Y2K }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
 
 /** Which artwork fills game tiles. */
 @Serializable enum class CoverStyle { BOXART, GRID, SQUARE }
-@Serializable enum class CoverShape { BOX, SQUARE, WIDE }
+@Serializable enum class CoverShape { NATURAL, BOX, SQUARE, WIDE }
 @Serializable enum class LibraryLayout { GRID, LIST }
 @Serializable enum class PlatformLayout { CARDS, GRID, LIST }
 @Serializable enum class OrientationMode { PORTRAIT, AUTO, LANDSCAPE }
@@ -83,7 +84,8 @@ data class AppSettings(
     val font: AppFont = AppFont.NUNITO,
     val textScale: Float = 1f,
     val cornerRadius: Int = 22,
-    val background: BackgroundStyle = BackgroundStyle.ART,
+    val uiStyle: UiStyle = UiStyle.GLASS,
+    val background: BackgroundStyle = BackgroundStyle.STYLE,
     val backgroundImageUri: String? = null,
     val backgroundBlur: Int = 12,
     val backgroundDim: Float = 0.5f,
@@ -92,6 +94,10 @@ data class AppSettings(
     val glassCards: Boolean = true,
     val gridColumns: Int = 3,
     val coverShape: CoverShape = CoverShape.BOX,
+    /** Replace titles with game logos (ES-DE marquees / SteamGridDB) where available. */
+    val showLogos: Boolean = true,
+    /** Show RomM games that aren't on this device in the library, ready to download. */
+    val rommInLibrary: Boolean = true,
     val coverStyle: CoverStyle = CoverStyle.BOXART,
     /** Crop art to fill tiles instead of showing all of it over a blurred backdrop. */
     val coverCrop: Boolean = false,
@@ -161,6 +167,13 @@ data class AppSettings(
         var s = copy(homeWidgets = kept + missing)
         // 0.2: game-art background replaced the aurora as the default look.
         if (s.schema < 2) s = s.copy(schema = 2, background = if (s.background == BackgroundStyle.AURORA) BackgroundStyle.ART else s.background)
+        // 0.3: styles own the backdrop, covers keep their real shape, the Glass look is the new default.
+        if (s.schema < 3) s = s.copy(
+            schema = 3,
+            background = if (s.background == BackgroundStyle.ART || s.background == BackgroundStyle.AURORA) BackgroundStyle.STYLE else s.background,
+            font = if (s.font == AppFont.NUNITO) AppFont.OUTFIT else s.font,
+            cornerRadius = if (s.cornerRadius == 22) 24 else s.cornerRadius,
+        )
         return s
     }
 }
@@ -178,8 +191,12 @@ data class Game(
     val rootPath: String? = null,
     val size: Long = 0,
     val modified: Long = 0,
+    /** Set for games that live on the RomM server and aren't on this device yet. */
+    val rommId: Int? = null,
+    val remoteCover: String? = null,
 ) {
     val baseName: String get() = fileName.substringBeforeLast('.', fileName)
+    val remote: Boolean get() = docUri.isEmpty() && rommId != null
 }
 
 /** Everything the user does to games, kept separate from the scan cache so rescans never lose it. */
