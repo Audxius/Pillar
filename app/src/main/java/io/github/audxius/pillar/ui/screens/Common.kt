@@ -75,7 +75,11 @@ fun ScreenHeader(
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                // Sits straight on the backdrop, so it follows the main text color rather than a dim grey.
+                Text(
+                    subtitle, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.82f), maxLines = 1,
+                )
             }
         }
         actions()

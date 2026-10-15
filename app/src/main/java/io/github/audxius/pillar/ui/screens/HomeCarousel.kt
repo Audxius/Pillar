@@ -37,6 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
@@ -53,6 +55,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -85,7 +89,10 @@ import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.chipColors
 import io.github.audxius.pillar.ui.theme.styledSurface
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.lazy.LazyColumn
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -147,6 +154,7 @@ fun HomeCarouselScreen() {
         Column(Modifier.fillMaxSize()) {
             // The logo gets all the room the carousel and buttons don't need.
             Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                MusicToggle(Modifier.align(Alignment.TopEnd).padding(top = 6.dp))
                 Crossfade(targetState = selected, animationSpec = tween(200), label = "logo") { g ->
                     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         TitleOrLogo(
@@ -160,7 +168,11 @@ fun HomeCarouselScreen() {
             Spacer(Modifier.height(12.dp))
             HomePlayButton(selected)
             Spacer(Modifier.height(6.dp))
-            Carousel(ordered, listState, selectedIndex, itemHeight, onLongPress = { quick = it })
+            if (LocalSettings.current.homeVertical) {
+                GameWheel(ordered, listState, selectedIndex, Modifier.weight(1.25f), onLongPress = { quick = it })
+            } else {
+                Carousel(ordered, listState, selectedIndex, itemHeight, onLongPress = { quick = it })
+            }
             Text(
                 "${selectedIndex + 1} / ${ordered.size}",
                 style = MaterialTheme.typography.labelSmall,
@@ -172,6 +184,20 @@ fun HomeCarouselScreen() {
         }
     }
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
+}
+
+/** The little music note that turns the style's theme music on and off. */
+@Composable
+private fun MusicToggle(modifier: Modifier) {
+    val graph = LocalGraph.current
+    val on = LocalSettings.current.themeMusic
+    val scope = rememberCoroutineScope()
+    StyledIconButton(
+        if (on) Icons.Rounded.MusicNote else Icons.Rounded.MusicOff,
+        if (on) "Turn theme music off" else "Turn theme music on",
+        modifier, size = 40.dp,
+        tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+    ) { scope.launch { graph.store.update { it.copy(themeMusic = !it.themeMusic) } } }
 }
 
 /** Pill chip drawn in the current style. */
@@ -305,6 +331,8 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     val corner = LocalCorner.current
+    // One scroll at a time: a new tap replaces a scroll that's still running.
+    var tapJob by remember { mutableStateOf<Job?>(null) }
     BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp)) {
         // Side padding that lets the first and last cover sit in the middle.
         val side = ((maxWidth - itemHeight * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
@@ -329,12 +357,78 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                         .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (focused) 1f else 0.7f }
                         .tappable(RoundedCornerShape(corner * 0.7f), onLongClick = { onLongPress(g) }) {
                             // Tapping the centered game opens its page; tapping another one brings it to the center.
-                            if (focused) nav.navigate(Routes.game(g.id, "home")) else scope.launch { state.animateScrollToItem(index) }
+                            if (focused) nav.navigate(Routes.game(g.id, "home"))
+                            else { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
                         },
                     sharedKey = "cover-home-${g.id}",
                     ratio = ratio,
                     compact = true,
                 )
+            }
+        }
+    }
+}
+
+/** Scrolls so the item's center lands exactly on the viewport's center, whatever the padding or item sizes. */
+private suspend fun LazyListState.centerOn(index: Int) {
+    if (layoutInfo.visibleItemsInfo.none { it.index == index }) scrollToItem(index)
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val center = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+    animateScrollBy((item.offset + item.size / 2 - center).toFloat(), spring(dampingRatio = 0.9f, stiffness = 400f))
+}
+
+/** Vertical alternative to the cover carousel: a wheel of rows, the focused one in the middle. */
+@Composable
+private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: Int, modifier: Modifier, onLongPress: (Game) -> Unit) {
+    val nav = LocalNav.current
+    val user = LocalUserData.current
+    val scope = rememberCoroutineScope()
+    var tapJob by remember { mutableStateOf<Job?>(null) }
+    val rowHeight = 76.dp
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val pad = ((maxHeight - rowHeight) / 2).coerceAtLeast(0.dp)
+        LazyColumn(
+            state = state,
+            flingBehavior = rememberSnapFlingBehavior(state),
+            contentPadding = PaddingValues(vertical = pad, horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            // Rows fade out toward the edges instead of being cut off under the Play button.
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.Transparent, 0.22f to Color.Black, 0.78f to Color.Black, 1f to Color.Transparent),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                    )
+                },
+        ) {
+            itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
+                val focused = index == selectedIndex
+                val scale by animateFloatAsState(if (focused) 1f else 0.92f, spring(dampingRatio = 0.8f, stiffness = 500f), label = "w")
+                val shape = RoundedCornerShape(18.dp)
+                Row(
+                    Modifier.fillMaxWidth().height(rowHeight)
+                        .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (focused) 1f else 0.55f }
+                        .then(if (focused) Modifier.styledSurface(shape, strong = true) else Modifier)
+                        .tappable(shape, onLongClick = { onLongPress(g) }) {
+                            if (focused) nav.navigate(Routes.game(g.id, "home"))
+                            else { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    GameCover(g, Modifier.height(rowHeight - 12.dp), ratio = 0.75f, compact = true)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(gameTitle(g), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val last = user.lastPlayed[g.id] ?: 0L
+                        Text(
+                            listOf(systemName(g.system), if (last > 0) timeAgo(last) else "Not played yet").joinToString(" · "),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                        )
+                    }
+                }
             }
         }
     }

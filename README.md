@@ -21,7 +21,12 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/style-y2k-home.webp" width="23%" alt="Y2K style, home" />
   <img src="docs/style-y2k-game.webp" width="23%" alt="Y2K style, game page" />
 </p>
-<p align="center"><sub>Glassmorphism (top), Frutiger Aero and Y2K (bottom)</sub></p>
+<p align="center">
+  <img src="docs/style-xmb-home.webp" width="23%" alt="XMB style" />
+  <img src="docs/style-wii-home.webp" width="23%" alt="Wii style" />
+  <img src="docs/style-luna-home.webp" width="23%" alt="Luna style" />
+</p>
+<p align="center"><sub>Glassmorphism (top); Frutiger Aero and Y2K, the Y2K one with the vertical game list; XMB, Wii and Luna</sub></p>
 
 ## Install
 
@@ -36,7 +41,7 @@ Android 8.0 or newer.
 ## Features
 
 - **Built for portrait.** Home is every game, most recently played first, as a snapping cover
-  carousel under the focused game's big logo, with its system, when you last played it and
+  carousel (or a vertical list, if you prefer) under the focused game's big logo, with its system, when you last played it and
   whether it has achievements. Tap a cover to open its page; Play is right there. Cover tiles
   stay uniform: art that doesn't match the tile is shown whole in a frame instead of cropped.
 - **Game pages.** Cover, logo, the emulator it will use right above Play, save files, RomM info
@@ -45,10 +50,12 @@ Android 8.0 or newer.
   pick one to browse its games with search, sort, filters and its default emulator.
 - **Knows your games.** Cartridge-era ROMs are identified by checksum against the No-Intro
   databases, so a file called `sonic3k.md` still gets its real name, box art and logo.
-- **Three looks.** Glassmorphism (default: your game's art behind frosted panels); Frutiger Aero
-  (Vista sky, light rays, bubbles, glossy glass and aqua buttons); and Y2K (PS2 and Dreamcast
-  menus: a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons, Exo 2
-  type). Each has its own backdrop, panels, buttons and dock.
+- **Six looks.** Glassmorphism (default: your game's art behind frosted panels); Frutiger Aero
+  (Vista sky, light rays, bubbles, glossy glass and aqua buttons); Y2K (PS2 and Dreamcast menus:
+  a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons); XMB (the PSP/PS3
+  wave); Wii (white pinstripes and Wii-blue rims); and Luna (Windows XP's Bliss hill, blue window
+  frames and a green Start-style Play button). Each has its own backdrop, panels, buttons and dock,
+  and its own original background music (synthesized on the device; toggle it with the music note).
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as

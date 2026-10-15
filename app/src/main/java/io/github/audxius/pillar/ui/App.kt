@@ -260,8 +260,8 @@ private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .fillMaxWidth()
-            .styledSurface(shape, strong = true)
-            .background(MaterialTheme.colorScheme.background.copy(alpha = if (dark) 0.55f else 0.35f))
+            // Opaque in every style: nothing scrolling underneath should show through.
+            .styledSurface(shape, strong = true, solid = true)
             .padding(6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

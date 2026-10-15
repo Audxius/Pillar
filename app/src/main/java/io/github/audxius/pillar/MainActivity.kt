@@ -33,12 +33,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        (application as PillarApp).syncOverlay.foreground.value = true
+        graph.foreground.value = true
     }
 
     override fun onStop() {
         super.onStop()
-        (application as PillarApp).syncOverlay.foreground.value = false
+        graph.foreground.value = false
     }
 
     override fun onResume() {

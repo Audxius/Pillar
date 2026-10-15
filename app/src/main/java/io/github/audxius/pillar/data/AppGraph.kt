@@ -60,6 +60,9 @@ class AppGraph(val context: Context) {
     val raClient = RaClient(context, http) { store.settings.value }
     val ra = RaRepository(context, raClient, store, catalog, scope)
     val identifier = GameIdentifier(context, http, catalog, scope)
+    /** True while one of Pillar's screens is visible (set by MainActivity). */
+    val foreground = MutableStateFlow(false)
+    val music = ThemeMusicPlayer(scope)
     val rommRepo = RommRepository(context, romm, store, catalog, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
     val artwork = ArtworkRepository(context, http, catalog, store, scope) { ra.hashTitles.value }
@@ -146,6 +149,12 @@ class AppGraph(val context: Context) {
     init {
         identifyGames()
         scope.launch { saveSync.coreFolders.collect { launcher.usedCores = it } }
+        // Theme music only while Pillar is on screen, never over a game.
+        scope.launch {
+            combine(store.settings.map { it.themeMusic to it.uiStyle }.distinctUntilChanged(), foreground) { (on, style), fg -> if (on && fg) style else null }
+                .distinctUntilChanged()
+                .collect { music.want(it) }
+        }
         matchRetroAchievements()
         scope.launch {
             downloads.states.collect { states ->

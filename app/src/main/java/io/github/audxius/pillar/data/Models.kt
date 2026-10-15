@@ -14,7 +14,7 @@ val PillarJson = Json {
 @Serializable enum class ThemeMode { SYSTEM, DARK, AMOLED, LIGHT }
 @Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL, EXO }
 @Serializable enum class BackgroundStyle { STYLE, ART, AURORA, GRADIENT, SOLID, IMAGE }
-@Serializable enum class UiStyle { GLASS, AERO, Y2K }
+@Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
 
 /** Which artwork fills game tiles. */
@@ -105,6 +105,10 @@ data class AppSettings(
     /** Crop art to fill tiles instead of showing all of it over a blurred backdrop. */
     val coverCrop: Boolean = false,
     val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
+    /** Home browses games in a vertical list of titles instead of the sideways cover carousel. */
+    val homeVertical: Boolean = false,
+    /** Each style's own background music. */
+    val themeMusic: Boolean = false,
     val sgdbKey: String = "",
     val showGameTitles: Boolean = true,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,

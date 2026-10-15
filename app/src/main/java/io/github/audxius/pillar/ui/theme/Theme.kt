@@ -57,6 +57,9 @@ val Palettes = listOf(
     PalettePreset("famicom", "Famicom", Color(0xFFE4002B), Color(0xFFD4A84A), Color(0xFFF2E6CE)),
     PalettePreset("aero", "Aero", Color(0xFF1E9BE8), Color(0xFF6CCB3B), Color(0xFF00C2D9)),
     PalettePreset("y2k", "Millennium", Color(0xFF3FB8FF), Color(0xFFFF7A00), Color(0xFFB4FF39)),
+    PalettePreset("xmb", "XMB", Color(0xFF4FA3FF), Color(0xFF9AD0FF), Color(0xFFE3F1FF)),
+    PalettePreset("wii", "Wii", Color(0xFF34BEED), Color(0xFF8A9BA8), Color(0xFF5CD4FF)),
+    PalettePreset("luna", "Luna", Color(0xFF245EDB), Color(0xFF3C9C3C), Color(0xFFF2A33A)),
     PalettePreset("mono", "Mono", Color(0xFFE6E6EA), Color(0xFF9A9AA6), Color(0xFFFFFFFF)),
 )
 
@@ -159,13 +162,15 @@ private fun familyFor(font: AppFont): FontFamily = when (font) {
     AppFont.SYSTEM -> FontFamily.Default
 }
 
-private fun typographyFor(font: AppFont, style: UiStyle): Typography {
+private fun typographyFor(font: AppFont, style: UiStyle, shadowed: Boolean = false): Typography {
     val f = familyFor(font)
     val base = Typography()
     // Y2K headings are heavy and slanted, like late-90s game box type.
     val y2k = style == UiStyle.Y2K
+    // Over bright, blurred game art a soft shadow keeps light text legible without hiding the art.
+    val shadow = if (shadowed) androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(0f, 1.5f), 8f) else null
     fun TextStyle.with(weight: FontWeight, spacing: Float? = null) =
-        copy(fontFamily = f, fontWeight = weight, letterSpacing = spacing?.em ?: letterSpacing)
+        copy(fontFamily = f, fontWeight = weight, letterSpacing = spacing?.em ?: letterSpacing, shadow = shadow)
     fun TextStyle.heading(weight: FontWeight, spacing: Float? = null) =
         with(if (y2k) FontWeight.Black else weight, spacing).let { if (y2k) it.copy(fontStyle = FontStyle.Italic) else it }
     return Typography(
@@ -236,7 +241,10 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         LocalIsDark provides dark,
         LocalDensity provides Density(density.density, density.fontScale * fontScale),
     ) {
-        MaterialTheme(colorScheme = scheme, typography = typographyFor(settings.font, settings.uiStyle), shapes = shapes) {
+        // Glassmorphism puts text straight over game art: brighter secondary text and a soft shadow.
+        val glassDark = settings.uiStyle == UiStyle.GLASS && dark
+        val finalScheme = if (glassDark) scheme.copy(onSurfaceVariant = Color(0xFFDAD6E8)) else scheme
+        MaterialTheme(colorScheme = finalScheme, typography = typographyFor(settings.font, settings.uiStyle, shadowed = glassDark), shapes = shapes) {
             // No root Surface, so set the default text/icon color explicitly.
             CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
         }

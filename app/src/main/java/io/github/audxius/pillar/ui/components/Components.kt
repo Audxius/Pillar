@@ -213,7 +213,7 @@ fun PillarBackground(modifier: Modifier = Modifier) {
                 StyleBackdrop(primary, palette.secondary, palette.tertiary, settings.animateBackground && settings.animations)
                 // The focused game's art shows through, as strongly as the style wants.
                 val art = io.github.audxius.pillar.ui.theme.specFor(io.github.audxius.pillar.ui.theme.LocalStyle.current).artStrength
-                if (art > 0f) ArtBackdrop(LocalAmbientArt.current.value, dark, bg, strength = art, topScrim = if (art >= 0.7f) 0.15f else 0.45f)
+                if (art > 0f) ArtBackdrop(LocalAmbientArt.current.value, dark, bg, strength = art, topScrim = if (art >= 0.7f) 0.3f else 0.45f)
             }
             BackgroundStyle.ART -> {
                 Aurora(primary, palette.secondary, palette.tertiary, alpha, settings.animateBackground && settings.animations)
@@ -416,11 +416,15 @@ fun GameCover(
     sharedKey: String? = null,
     ratio: Float? = null,
     compact: Boolean = false,
+    /** Square art (SteamGridDB's square grids) ahead of the usual covers. */
+    preferSquare: Boolean = false,
 ) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
     val user = LocalUserData.current
-    val sources = rememberCoverSources(game)
+    val cover = rememberCoverSources(game)
+    val squareArt = if (preferSquare) rememberArt(game)?.sgdbSquare else null
+    val sources = remember(cover, squareArt) { listOfNotNull(squareArt) + cover }
     val title = gameTitle(game)
     val natural = ratio == null && settings.coverShape == CoverShape.NATURAL
     val known = rememberAspect(game)
@@ -469,6 +473,8 @@ fun GameTile(
     sharedKey: String? = null,
     showTitle: Boolean = LocalSettings.current.showGameTitles,
     showSystem: Boolean = false,
+    /** Square tiles with square art, for big two-column grids. */
+    square: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -477,7 +483,9 @@ fun GameTile(
             game,
             Modifier.fillMaxWidth(),
             sharedKey = sharedKey,
-            compact = true,
+            ratio = if (square) 1f else null,
+            compact = !square,
+            preferSquare = square,
         )
         if (showTitle) {
             Spacer(Modifier.height(6.dp))

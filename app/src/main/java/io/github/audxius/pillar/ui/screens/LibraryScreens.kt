@@ -284,12 +284,13 @@ fun PlatformScreen(system: String) {
         }
     }
 
+    // Two big square tiles per row: the art speaks for itself, no captions.
     LazyVerticalGrid(
-        GridCells.Fixed(settings.gridColumns.coerceIn(2, 6)),
+        GridCells.Fixed(2),
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 40.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
@@ -354,7 +355,7 @@ fun PlatformScreen(system: String) {
             }
         }
         items(games, key = { it.id }) { g ->
-            GameTile(g, sharedKey = "cover-lib-${g.id}", showSystem = false, onLongClick = { quick = g }) {
+            GameTile(g, sharedKey = "cover-lib-${g.id}", showTitle = false, square = true, onLongClick = { quick = g }) {
                 nav.navigate(Routes.game(g.id, "lib"))
             }
         }

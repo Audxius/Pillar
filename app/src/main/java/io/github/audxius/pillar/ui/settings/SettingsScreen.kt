@@ -200,8 +200,9 @@ private fun AppearancePage() {
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
         )
+        io.github.audxius.pillar.ui.theme.StyleSpecs.chunked(3).forEach { rowSpecs ->
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            io.github.audxius.pillar.ui.theme.StyleSpecs.forEach { spec ->
+            rowSpecs.forEach { spec ->
                 val selected = s.uiStyle == spec.style
                 Column(
                     Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
@@ -236,6 +237,11 @@ private fun AppearancePage() {
                 }
             }
         }
+        }
+        SettingSwitch(
+            "Theme music", "An original background loop for each style, only while Pillar is on screen. Also on the home screen's music note.",
+            s.themeMusic,
+        ) { v -> update { it.copy(themeMusic = v) } }
     }
 
     SettingsGroup("Theme") {
@@ -382,6 +388,12 @@ private fun HomePage() {
             s.homeLayout,
             description = "Carousel: full-screen art with a cover carousel. Feed: scrolling widgets you arrange below.",
         ) { l -> update { it.copy(homeLayout = l) } }
+        SettingChoice(
+            "Browse games",
+            listOf(false to "Sideways covers", true to "Vertical list"),
+            s.homeVertical,
+            description = "How the carousel home scrolls through your games.",
+        ) { v -> update { it.copy(homeVertical = v) } }
     }
     SettingsGroup("Greeting") {
         SettingField("Your name", name, { name = it; update { st -> st.copy(greetingName = it.trim()) } }, placeholder = "Shown in the greeting")

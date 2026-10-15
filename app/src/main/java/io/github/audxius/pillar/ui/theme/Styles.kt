@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -57,7 +58,10 @@ data class StyleSpec(
 val StyleSpecs = listOf(
     StyleSpec(UiStyle.GLASS, "Glassmorphism", "Your game's art behind calm, frosted panels", "aurora", ThemeMode.DARK, AppFont.OUTFIT, 24, 0.75f),
     StyleSpec(UiStyle.AERO, "Frutiger Aero", "Vista sky, glossy glass, light rays and bubbles", "aero", ThemeMode.LIGHT, AppFont.NUNITO, 16, 0f),
-    StyleSpec(UiStyle.Y2K, "Y2K", "PS2 and Dreamcast menus: grid floor, cubes, chrome", "y2k", ThemeMode.DARK, AppFont.EXO, 10, 0.3f),
+    StyleSpec(UiStyle.Y2K, "Y2K", "PS2 and Dreamcast menus: grid floor, cubes, chrome", "y2k", ThemeMode.DARK, AppFont.EXO, 3, 0.3f),
+    StyleSpec(UiStyle.XMB, "XMB", "PSP and PS3 menu: a slow light wave over deep color", "xmb", ThemeMode.DARK, AppFont.OUTFIT, 12, 0.18f),
+    StyleSpec(UiStyle.WII, "Wii", "Wii menu: white pinstripes, rounded channels, Wii blue", "wii", ThemeMode.LIGHT, AppFont.NUNITO, 22, 0f),
+    StyleSpec(UiStyle.LUNA, "Luna", "Windows XP: Bliss hill, blue window frames, green Start", "luna", ThemeMode.LIGHT, AppFont.SYSTEM, 7, 0f),
 )
 
 fun specFor(style: UiStyle) = StyleSpecs.first { it.style == style }
@@ -67,24 +71,37 @@ val LocalStyle = staticCompositionLocalOf { UiStyle.GLASS }
 // Y2K colors.
 private val Cyan = Color(0xFF6FD3FF)
 private val Navy = Color(0xFF07152F)
+// Wii and Windows XP colors.
+private val WiiBlue = Color(0xFF34BEED)
+private val WiiRim = Color(0xFFCBD3DA)
+private val XpBlue = Color(0xFF0A49C5)
+private val XpFace = Color(0xFFECE9D8)
 
-/** Panel surface for the current style: fill, rim and highlight. */
+/**
+ * Panel surface for the current style: fill, rim and highlight. [solid] puts an opaque base
+ * underneath, for things that must never let content show through (the dock).
+ */
 @Composable
-fun Modifier.styledSurface(shape: Shape, strong: Boolean = false): Modifier {
+fun Modifier.styledSurface(shape: Shape, strong: Boolean = false, solid: Boolean = false): Modifier {
     val style = LocalStyle.current
     val dark = LocalIsDark.current
+    fun Modifier.base(c: Color) = if (solid) background(c) else this
     return when (style) {
         UiStyle.GLASS -> this
             .clip(shape)
+            .base(if (dark) Color(0xFF17161F) else Color(0xFFF2F2F7))
             .background(
-                if (dark) Brush.verticalGradient(listOf(Color.White.copy(alpha = if (strong) 0.13f else 0.085f), Color.White.copy(alpha = if (strong) 0.08f else 0.045f)))
-                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.78f), Color.White.copy(alpha = 0.6f)))
+                // Dark frosted glass: dims whatever art is behind it so text stays readable.
+                if (dark) Brush.verticalGradient(listOf(Color(0xFF0B0A12).copy(alpha = if (strong) 0.5f else 0.42f), Color(0xFF0B0A12).copy(alpha = 0.55f)))
+                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.82f), Color.White.copy(alpha = 0.66f)))
             )
+            .then(if (dark) Modifier.background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.03f)))) else Modifier)
             .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.24f else 0.95f), Color.White.copy(alpha = if (dark) 0.05f else 0.45f))), shape)
 
         UiStyle.AERO -> this
             .shadow(if (strong) 10.dp else 6.dp, shape, ambientColor = Color(0xFF0A5FB8), spotColor = Color(0xFF0A5FB8))
             .clip(shape)
+            .base(if (dark) Color(0xFF0E2A47) else Color(0xFFE4F3FD))
             .background(
                 if (dark) Brush.verticalGradient(listOf(Color(0xFF2B6A9E).copy(alpha = 0.6f), Color(0xFF0D2F52).copy(alpha = 0.72f)))
                 else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.72f), Color(0xFFE6F6FF).copy(alpha = 0.5f)))
@@ -100,14 +117,52 @@ fun Modifier.styledSurface(shape: Shape, strong: Boolean = false): Modifier {
             }
             .border(1.dp, Brush.verticalGradient(listOf(Color.White, Color.White.copy(alpha = 0.6f), Color(0xFF9AD6FA))), shape)
 
-        UiStyle.Y2K -> this
+        UiStyle.Y2K -> {
+            // Square corners to match the HUD brackets; only round things stay round.
+            val sq = if (shape == CircleShape) shape else RoundedCornerShape(3.dp)
+            this
+                .clip(sq)
+                .base(if (dark) Color(0xFF061128) else Color(0xFFEAF0F8))
+                .background(
+                    if (dark) Brush.verticalGradient(listOf(Color(0xFF0D2148).copy(alpha = 0.78f), Navy.copy(alpha = 0.86f)))
+                    else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.86f), Color(0xFFE3ECF8).copy(alpha = 0.8f)))
+                )
+                .border(1.dp, (if (dark) Cyan else Color(0xFF2C6FD1)).copy(alpha = if (strong) 0.6f else 0.38f), sq)
+                .then(if (shape == CircleShape) Modifier else Modifier.techBrackets(if (dark) Cyan else Color(0xFF2C6FD1)))
+        }
+
+        UiStyle.XMB -> this
             .clip(shape)
-            .background(
-                if (dark) Brush.verticalGradient(listOf(Color(0xFF0D2148).copy(alpha = 0.78f), Navy.copy(alpha = 0.86f)))
-                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.86f), Color(0xFFE3ECF8).copy(alpha = 0.8f)))
-            )
-            .border(1.dp, (if (dark) Cyan else Color(0xFF2C6FD1)).copy(alpha = if (strong) 0.6f else 0.38f), shape)
-            .then(if (shape == CircleShape) Modifier else Modifier.techBrackets(if (dark) Cyan else Color(0xFF2C6FD1)))
+            .base(Color(0xFF0B1424))
+            .background(Color.Black.copy(alpha = if (strong) 0.42f else 0.34f))
+            .drawWithContent {
+                drawContent()
+                // The XMB's thin highlight along the top edge.
+                drawLine(Color.White.copy(alpha = 0.28f), Offset(size.width * 0.06f, 0.5f), Offset(size.width * 0.94f, 0.5f), 1.dp.toPx())
+            }
+            .border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+
+        UiStyle.WII -> this
+            .shadow(if (strong) 8.dp else 4.dp, shape, ambientColor = Color(0xFF5A6B78), spotColor = Color(0xFF5A6B78))
+            .clip(shape)
+            .background(if (dark) Color(0xFF2A3036) else Color.White)
+            .border(if (strong) 2.5.dp else 1.5.dp, if (strong) WiiBlue else (if (dark) Color(0xFF46505A) else WiiRim), shape)
+
+        UiStyle.LUNA -> {
+            val win = if (shape == CircleShape) shape else RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp)
+            this
+                .shadow(4.dp, win)
+                .clip(win)
+                .background(if (dark) Color(0xFF26324A) else Color(0xFFF7F6F0))
+                .drawWithContent {
+                    // A slim Luna title bar along the top of every window.
+                    if (shape != CircleShape && size.height > 40.dp.toPx()) {
+                        drawRect(Brush.verticalGradient(listOf(Color(0xFF3D8AF7), XpBlue, Color(0xFF0838A8)), endY = 6.dp.toPx()), size = Size(size.width, 6.dp.toPx()))
+                    }
+                    drawContent()
+                }
+                .border(1.5.dp, if (strong) Color(0xFF0838A8) else Color(0xFF0838A8).copy(alpha = 0.55f), win)
+        }
     }
 }
 
@@ -138,6 +193,12 @@ fun primaryActionColors(): Pair<Brush, Color> {
         UiStyle.Y2K -> Brush.verticalGradient(
             0f to Color(0xFFFFFFFF), 0.55f to Color(0xFFE3EAF4), 0.78f to Color(0xFF9DB0CB), 0.86f to Color(0xFFD5E1F1), 1f to Color(0xFFF7FAFF)
         ) to Color(0xFF071330)
+        // XMB: a lit, see-through selection bar.
+        UiStyle.XMB -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.14f))) to Color.White
+        // Wii: a white channel button with Wii-blue lettering.
+        UiStyle.WII -> Brush.verticalGradient(listOf(Color.White, Color(0xFFEAF0F4))) to Color(0xFF168FC7)
+        // Windows XP's green Start button.
+        UiStyle.LUNA -> Brush.verticalGradient(0f to Color(0xFF6CC86A), 0.18f to Color(0xFF3FA83C), 0.85f to Color(0xFF2F9A2C), 1f to Color(0xFF237A22)) to Color.White
     }
 }
 
@@ -158,6 +219,9 @@ fun Modifier.primaryActionFinish(shape: Shape): Modifier = when (LocalStyle.curr
         }
         .border(1.dp, Color(0xFF05578F), shape)
     UiStyle.Y2K -> this.border(1.5.dp, Brush.verticalGradient(listOf(Color.White, Color(0xFF6E86AA))), shape)
+    UiStyle.XMB -> this.border(1.5.dp, Color.White.copy(alpha = 0.8f), shape)
+    UiStyle.WII -> this.border(3.dp, WiiBlue, shape)
+    UiStyle.LUNA -> this.border(1.dp, Color(0xFF1C5E1B), shape)
 }
 
 /** Kept for styles that draw outside the button's bounds; none do at the moment. */
@@ -177,6 +241,13 @@ fun chipColors(selected: Boolean): Triple<Brush, Color, Brush> {
         UiStyle.Y2K -> if (selected) Triple(SolidBrush(Cyan), Navy, SolidBrush(Color.White))
         else if (dark) Triple(SolidBrush(Navy.copy(alpha = 0.7f)), Color.White, SolidBrush(Cyan.copy(alpha = 0.45f)))
         else Triple(SolidBrush(Color.White.copy(alpha = 0.85f)), Navy, SolidBrush(Color(0xFF2C6FD1).copy(alpha = 0.5f)))
+        UiStyle.XMB -> if (selected) Triple(SolidBrush(Color.White.copy(alpha = 0.92f)), Color(0xFF0B1424), SolidBrush(Color.White))
+        else Triple(SolidBrush(Color.Black.copy(alpha = 0.3f)), Color.White, SolidBrush(Color.White.copy(alpha = 0.22f)))
+        UiStyle.WII -> if (selected) Triple(SolidBrush(WiiBlue), Color.White, SolidBrush(Color(0xFF1A9FD6)))
+        else if (dark) Triple(SolidBrush(Color(0xFF2A3036)), Color.White, SolidBrush(Color(0xFF46505A)))
+        else Triple(SolidBrush(Color.White), Color(0xFF4A5560), SolidBrush(WiiRim))
+        UiStyle.LUNA -> if (selected) Triple(Brush.verticalGradient(listOf(Color(0xFF4C93FA), Color(0xFF1C5FD7))), Color.White, SolidBrush(Color(0xFF0838A8)))
+        else Triple(Brush.verticalGradient(listOf(Color.White, XpFace)), Color.Black, SolidBrush(Color(0xFF003C74).copy(alpha = 0.7f)))
     }
 }
 
@@ -190,6 +261,9 @@ fun StyleBackdrop(primary: Color, secondary: Color, tertiary: Color, animate: Bo
         UiStyle.GLASS -> GlassMesh(primary, secondary, tertiary, animate)
         UiStyle.AERO -> AeroSky(animate)
         UiStyle.Y2K -> ConsoleMenu(animate)
+        UiStyle.XMB -> XmbWave(primary, animate)
+        UiStyle.WII -> WiiStripes()
+        UiStyle.LUNA -> Bliss(animate)
     }
 }
 
@@ -365,3 +439,93 @@ private fun DrawScope.drawIsoCube(c: Offset, s: Float, edge: Color, dark: Boolea
     drawLine(edge.copy(alpha = 0.45f), left, c, 1.2.dp.toPx()); drawLine(edge.copy(alpha = 0.45f), right, c, 1.2.dp.toPx())
     drawLine(edge.copy(alpha = 0.45f), c, bottom, 1.2.dp.toPx())
 }
+
+// ---- XMB (PSP / PS3) ---------------------------------------------------------------------------
+
+@Composable
+private fun XmbWave(tint: Color, animate: Boolean) {
+    val t = drift(animate, 16000, "xmb", linear = true)
+    Canvas(Modifier.fillMaxSize()) {
+        val w = size.width; val h = size.height
+        // Deep, slightly tinted gradient, brighter toward the middle like the XMB.
+        drawRect(Brush.verticalGradient(listOf(lerp(tint, Color.Black, 0.72f), lerp(tint, Color.Black, 0.45f), lerp(tint, Color.Black, 0.8f))))
+        // High enough to sweep behind the logo instead of hiding behind the carousel.
+        val mid = h * 0.3f
+        val phase = t * 2 * PI.toFloat()
+        // The wave: a soft glowing band plus a bundle of fine lines drifting through each other.
+        fun y(x: Float, k: Float, off: Float) = mid + h * 0.07f * sin(x / w * 2.2f * PI.toFloat() + phase * k + off) + h * 0.03f * sin(x / w * 5f * PI.toFloat() - phase * 0.6f + off)
+        val band = Path()
+        val steps = 48
+        for (i in 0..steps) { val x = w * i / steps; if (i == 0) band.moveTo(x, y(x, 1f, 0f) - h * 0.05f) else band.lineTo(x, y(x, 1f, 0f) - h * 0.05f) }
+        for (i in steps downTo 0) { val x = w * i / steps; band.lineTo(x, y(x, 1f, 0.6f) + h * 0.06f) }
+        band.close()
+        drawPath(band, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0f)), startY = mid - h * 0.15f, endY = mid + h * 0.15f))
+        for (j in 0 until 7) {
+            val line = Path()
+            for (i in 0..steps) {
+                val x = w * i / steps
+                val yy = y(x, 1f + j * 0.07f, j * 0.35f)
+                if (i == 0) line.moveTo(x, yy) else line.lineTo(x, yy)
+            }
+            drawPath(line, Color.White.copy(alpha = 0.18f + 0.06f * (j % 3)), style = Stroke(1.2.dp.toPx()))
+        }
+    }
+}
+
+// ---- Wii ---------------------------------------------------------------------------------------
+
+@Composable
+private fun WiiStripes() {
+    val dark = LocalIsDark.current
+    Canvas(Modifier.fillMaxSize()) {
+        val w = size.width; val h = size.height
+        drawRect(if (dark) Brush.verticalGradient(listOf(Color(0xFF1C2126), Color(0xFF14181C))) else Brush.verticalGradient(listOf(Color(0xFFFBFCFD), Color(0xFFE9EEF2))))
+        // Fine horizontal pinstripes, the Wii menu's signature.
+        val gap = 4.dp.toPx()
+        var y = 0f
+        val stripe = if (dark) Color.White.copy(alpha = 0.035f) else Color(0xFFDCE3E9).copy(alpha = 0.7f)
+        while (y < h) { drawLine(stripe, Offset(0f, y), Offset(w, y), 1.dp.toPx()); y += gap }
+        // Soft Wii-blue glow rising from the bottom.
+        drawOval(
+            Brush.radialGradient(listOf(WiiBlue.copy(alpha = if (dark) 0.2f else 0.16f), WiiBlue.copy(alpha = 0f)), center = Offset(w / 2, h * 1.02f), radius = w * 0.9f),
+            topLeft = Offset(-w * 0.4f, h * 0.65f), size = Size(w * 1.8f, h * 0.75f),
+        )
+    }
+}
+
+// ---- Windows XP Luna ---------------------------------------------------------------------------
+
+@Composable
+private fun Bliss(animate: Boolean) {
+    val dark = LocalIsDark.current
+    val drift = drift(animate, 60000, "bliss", linear = true)
+    Canvas(Modifier.fillMaxSize()) {
+        val w = size.width; val h = size.height
+        drawRect(
+            if (dark) Brush.verticalGradient(listOf(Color(0xFF0A1A3A), Color(0xFF1C3D72), Color(0xFF365E8F)))
+            else Brush.verticalGradient(0f to Color(0xFF6FAEF2), 0.4f to Color(0xFF8EC2F5), 0.72f to Color(0xFFC6E2FA), 1f to Color(0xFFE2F0FC))
+        )
+        // Soft drifting clouds.
+        listOf(floatArrayOf(0.2f, 0.16f, 0.32f), floatArrayOf(0.75f, 0.1f, 0.26f), floatArrayOf(0.55f, 0.3f, 0.38f), floatArrayOf(0.05f, 0.4f, 0.22f)).forEachIndexed { i, (cx, cy, r) ->
+            val x = ((cx + drift * (0.25f + i * 0.05f)) % 1.3f - 0.15f) * w
+            val c = Offset(x, h * cy)
+            drawOval(
+                Brush.radialGradient(listOf(Color.White.copy(alpha = if (dark) 0.12f else 0.75f), Color.White.copy(alpha = 0f)), center = c, radius = w * r),
+                topLeft = Offset(c.x - w * r, c.y - w * r * 0.4f), size = Size(w * r * 2, w * r * 0.8f),
+            )
+        }
+        // The rolling green hill.
+        val top = h * 0.66f
+        val hill = Path().apply {
+            moveTo(0f, h); lineTo(0f, top + h * 0.06f)
+            cubicTo(w * 0.25f, top - h * 0.05f, w * 0.6f, top - h * 0.02f, w, top + h * 0.08f)
+            lineTo(w, h); close()
+        }
+        drawPath(hill, Brush.verticalGradient(
+            if (dark) listOf(Color(0xFF2E5A1E), Color(0xFF1A3A12)) else listOf(Color(0xFF7CC845), Color(0xFF4E9E2A), Color(0xFF2F7418)),
+            startY = top - h * 0.05f, endY = h,
+        ))
+        drawPath(hill, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.06f else 0.25f), Color.White.copy(alpha = 0f)), startY = top - h * 0.05f, endY = top + h * 0.06f))
+    }
+}
+

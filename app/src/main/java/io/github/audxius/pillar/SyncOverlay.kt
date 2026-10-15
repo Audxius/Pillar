@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -28,8 +27,6 @@ import kotlinx.coroutines.launch
  * setting to be on; inside Pillar the app shows its own indicator instead.
  */
 class SyncOverlay(private val context: Context, private val graph: AppGraph, private val scope: CoroutineScope) {
-    /** True while one of Pillar's screens is visible. */
-    val foreground = MutableStateFlow(false)
 
     private val wm = context.getSystemService(WindowManager::class.java)
     private var view: View? = null
@@ -40,7 +37,7 @@ class SyncOverlay(private val context: Context, private val graph: AppGraph, pri
     fun start() {
         scope.launch(Dispatchers.Main) {
             var wasRunning = false
-            combine(graph.saveSync.status, foreground, graph.store.settings) { status, fg, s -> Triple(status, fg, s.syncOverlay) }
+            combine(graph.saveSync.status, graph.foreground, graph.store.settings) { status, fg, s -> Triple(status, fg, s.syncOverlay) }
                 .collect { (status, fg, enabled) ->
                     val allowed = enabled && !fg && canDraw()
                     when {
