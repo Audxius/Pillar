@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material3.Button
@@ -753,40 +754,73 @@ private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, streng
     }
 }
 
-/** The big call to action (Play / Download & play), drawn in the current style. Shows progress when given. */
+/**
+ * The big call to action (Play / Download & play), drawn in the current style. Shows progress
+ * when given; with [onMenu] the right end becomes a separate dropdown segment (e.g. emulator choice).
+ */
 @Composable
 fun PrimaryAction(
     label: String,
     icon: ImageVector,
     modifier: Modifier = Modifier,
     progress: Float? = null,
+    subtitle: String? = null,
+    onMenu: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val (brush, content) = io.github.audxius.pillar.ui.theme.primaryActionColors()
     val shape = RoundedCornerShape(50)
     val primary = MaterialTheme.colorScheme.primary
+    val light = content == Color.White
+    // White labels get a firm dark shadow so they stay legible over glossy streaks.
+    val shadow = androidx.compose.ui.graphics.Shadow(
+        if (light) Color(0xFF00284D).copy(alpha = 0.7f) else Color.Transparent,
+        offset = androidx.compose.ui.geometry.Offset(0f, 2f), blurRadius = 5f,
+    )
     Box(
         modifier
             .primaryActionOuter(shape)
             .shadow(14.dp, shape, ambientColor = primary, spotColor = primary)
             .clip(shape)
             .background(brush)
-            .tappable(shape, onClick = onClick),
+            .then(if (onMenu == null) Modifier.tappable(shape, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         if (progress != null) {
             Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(progress.coerceIn(0f, 1f)).background(Color.White.copy(alpha = 0.25f)))
         }
         Box(Modifier.matchParentSize().primaryActionFinish(shape))
-        Row(Modifier.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = content, modifier = Modifier.size(26.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                label, maxLines = 1, color = content,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = if (content == Color.White) 0.35f else 0f), blurRadius = 6f),
-                ),
-            )
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).fillMaxHeight()
+                    .then(if (onMenu != null) Modifier.tappable(RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50), onClick = onClick) else Modifier)
+                    .padding(start = if (onMenu != null) 48.dp else 20.dp, end = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(icon, null, tint = content, modifier = Modifier.size(30.dp))
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        label, maxLines = 1, color = content,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black, shadow = shadow),
+                    )
+                    if (subtitle != null) {
+                        Text(
+                            subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, color = content.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.labelMedium.copy(shadow = shadow),
+                        )
+                    }
+                }
+            }
+            if (onMenu != null) {
+                Box(Modifier.width(1.dp).fillMaxHeight(0.55f).background(content.copy(alpha = 0.35f)))
+                Box(
+                    Modifier.width(56.dp).fillMaxHeight()
+                        .tappable(RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50), onClick = onMenu),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Rounded.ExpandMore, "Choose emulator", tint = content, modifier = Modifier.size(28.dp)) }
+            }
         }
     }
 }

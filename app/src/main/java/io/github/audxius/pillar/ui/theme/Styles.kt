@@ -132,10 +132,11 @@ fun primaryActionColors(): Pair<Brush, Color> {
     val primary = androidx.compose.material3.MaterialTheme.colorScheme.primary
     return when (style) {
         UiStyle.GLASS -> Brush.verticalGradient(listOf(lerp(primary, Color.White, 0.14f), primary)) to primary.onColor()
-        UiStyle.AERO -> Brush.verticalGradient(0f to Color(0xFFB8F2FF), 0.45f to Color(0xFF39C3F5), 0.55f to Color(0xFF0B86D6), 1f to Color(0xFF29B4F0)) to Color.White
+        UiStyle.AERO -> Brush.verticalGradient(0f to Color(0xFF7FD9FF), 0.45f to Color(0xFF22A8EC), 0.55f to Color(0xFF0874C4), 1f to Color(0xFF1B9BE0)) to Color.White
         // Brushed chrome: bright, a dark band through the middle, bright again.
+        // The dark band sits low so the label always reads on bright metal.
         UiStyle.Y2K -> Brush.verticalGradient(
-            0f to Color(0xFFFFFFFF), 0.42f to Color(0xFFC9D6E8), 0.5f to Color(0xFF8297B6), 0.58f to Color(0xFFD5E1F1), 1f to Color(0xFFF7FAFF)
+            0f to Color(0xFFFFFFFF), 0.55f to Color(0xFFE3EAF4), 0.78f to Color(0xFF9DB0CB), 0.86f to Color(0xFFD5E1F1), 1f to Color(0xFFF7FAFF)
         ) to Color(0xFF071330)
     }
 }
@@ -148,9 +149,10 @@ fun Modifier.primaryActionFinish(shape: Shape): Modifier = when (LocalStyle.curr
         .drawWithContent {
             drawContent()
             drawRoundRect(
-                Brush.verticalGradient(0f to Color.White.copy(alpha = 0.85f), 1f to Color.White.copy(alpha = 0.08f)),
-                topLeft = Offset(size.width * 0.03f, size.height * 0.04f),
-                size = Size(size.width * 0.94f, size.height * 0.36f),
+                // A thin streak along the top edge only, clear of the label.
+                Brush.verticalGradient(0f to Color.White.copy(alpha = 0.75f), 1f to Color.White.copy(alpha = 0.05f)),
+                topLeft = Offset(size.width * 0.05f, size.height * 0.05f),
+                size = Size(size.width * 0.9f, size.height * 0.22f),
                 cornerRadius = CornerRadius(size.height / 2),
             )
         }

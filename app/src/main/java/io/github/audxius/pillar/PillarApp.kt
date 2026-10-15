@@ -14,10 +14,13 @@ import io.github.audxius.pillar.data.AppGraph
 class PillarApp : Application(), SingletonImageLoader.Factory {
     lateinit var graph: AppGraph
         private set
+    lateinit var syncOverlay: SyncOverlay
+        private set
 
     override fun onCreate() {
         super.onCreate()
         graph = AppGraph(this)
+        syncOverlay = SyncOverlay(this, graph, graph.scope).also { it.start() }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {

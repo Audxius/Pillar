@@ -150,6 +150,8 @@ data class AppSettings(
     val savesDir: String? = null,
     val statesDir: String? = null,
     val syncOnOpen: Boolean = true,
+    /** Show a small sync indicator over games while saves sync in the background. */
+    val syncOverlay: Boolean = false,
 
     // RetroAchievements
     val raUser: String = "",

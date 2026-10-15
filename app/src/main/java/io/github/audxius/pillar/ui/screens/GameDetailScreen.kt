@@ -235,31 +235,15 @@ private fun GameDetail(game: Game, src: String) {
             }
             Spacer(Modifier.height(20.dp))
 
-            // Emulator choice sits right above Play.
+            // Play and the emulator choice share one button: the right end opens the emulator list.
             val custom = user.emulatorOverride[game.id] != null
-            val installed = remember(command) { command != null && graph.launcher.isCommandAvailable(command) }
-            Row(
-                Modifier.fillMaxWidth().styledSurface(RoundedCornerShape(16.dp)).tappable(RoundedCornerShape(16.dp)) { emuSheet = true }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.SportsEsports, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (custom) "Emulator for this game" else "Emulator",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        (command?.label ?: "No emulator available") + if (command != null && !installed) " · not installed" else "",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (installed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Icon(Icons.Rounded.ExpandMore, "Change", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            val status = remember(command) { command?.let { graph.launcher.status(it) } }
+            val emuLabel = when {
+                command == null -> "No emulator available"
+                status == io.github.audxius.pillar.data.GameLauncher.Status.APP_MISSING -> "${command.label} · not installed"
+                status == io.github.audxius.pillar.data.GameLauncher.Status.CORE_UNSEEN -> "${command.label} · core may be missing"
+                else -> command.label + if (custom) " · this game" else ""
             }
-            Spacer(Modifier.height(10.dp))
 
             // Play, or download from RomM first.
             val downloads by graph.downloads.states.collectAsStateWithLifecycle()
@@ -274,7 +258,10 @@ private fun GameDetail(game: Game, src: String) {
                     if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     graph.downloadAndPlay(game)
                 }
-                else -> PrimaryAction("Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(58.dp)) {
+                else -> PrimaryAction(
+                    "Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(66.dp),
+                    subtitle = emuLabel, onMenu = { emuSheet = true },
+                ) {
                     if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
                 }
             }

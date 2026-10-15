@@ -76,6 +76,8 @@ class ArtworkRepository(
     private val catalog: SystemCatalog,
     private val store: SettingsStore,
     private val scope: CoroutineScope,
+    /** Other names a game is known by (RetroAchievements' title for its hash), tried as extra searches. */
+    private val altTitles: () -> Map<String, String> = { emptyMap() },
 ) {
     private val cacheFile = File(context.filesDir, "artwork.json")
     private val indexDir = File(context.cacheDir, "libretro-index").apply { mkdirs() }
@@ -259,10 +261,23 @@ class ArtworkRepository(
         // Prefer the clean database title the file matched ("Pokemon - FireRed Version") over the file name.
         val matched = matchedName?.let { LibraryRepository.cleanTitle("$it.x") }
         val title = store.userData.value.customTitle[game.id] ?: (if (game.datName != null) game.title else null) ?: matched ?: game.title
-        val results = sgdbGet("/search/autocomplete/${Uri.encode(title)}")
-            ?.let { runCatching { PillarJson.decodeFromJsonElement(ListSerializer(SgdbGame.serializer()), it) }.getOrNull() }
-            ?: return ArtSet(sgdbChecked = true)
-        val match = SgdbMatch.pick(title, results.map { it.name })?.let { results[it] } ?: return ArtSet(sgdbChecked = true)
+        // SteamGridDB often lists a game under a shorter or more common name than the database one,
+        // e.g. "Sonic 3 & Knuckles" for "Sonic & Knuckles + Sonic The Hedgehog 3".
+        val queries = listOfNotNull(
+            title,
+            altTitles()[game.id]?.let { LibraryRepository.cleanTitle("$it.x") },
+            title.substringBefore(" + ").takeIf { it != title },
+            title.substringBefore(": ").takeIf { it != title && it.length >= 4 },
+        ).distinct()
+        var match: SgdbGame? = null
+        for (q in queries) {
+            val results = sgdbGet("/search/autocomplete/${Uri.encode(q)}")
+                ?.let { runCatching { PillarJson.decodeFromJsonElement(ListSerializer(SgdbGame.serializer()), it) }.getOrNull() }
+                ?: continue
+            match = (SgdbMatch.pick(q, results.map { it.name }) ?: SgdbMatch.pick(title, results.map { it.name }))?.let { results[it] }
+            if (match != null) break
+        }
+        if (match == null) return ArtSet(sgdbChecked = true)
 
         // Art in the game's language first: Japanese only for Japan-only releases.
         val tags = LibraryRepository.tags(game.datName?.let { "$it.x" } ?: game.fileName).joinToString(",").lowercase()
@@ -281,5 +296,5 @@ class ArtworkRepository(
     suspend fun testSgdb(): Boolean = runCatching { sgdbGet("/search/autocomplete/mario") != null }.getOrDefault(false)
 }
 
-/** 2: accent-insensitive titles and strict SteamGridDB matching (0.3.0). */
-private const val ART_VERSION = 2
+/** 2: accent-insensitive titles and strict SteamGridDB matching (0.3.0). 3: extra searches and language preference (0.7.0). */
+private const val ART_VERSION = 3

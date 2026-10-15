@@ -61,11 +61,31 @@ class GameLauncher(private val context: Context, private val catalog: SystemCata
         return custom + builtin
     }
 
-    fun isCommandAvailable(cmd: EmuCommand): Boolean {
-        if (cmd.raw.contains("%ANDROIDAPP%")) return true
-        val id = cmd.emulatorId ?: return false
-        return resolveEmulator(id) != null
+    enum class Status { READY, APP_MISSING, CORE_UNSEEN }
+
+    /** RetroArch core folders seen in the saves/states folders (see SaveSync.coreFolders). */
+    @Volatile var usedCores: Set<String> = emptySet()
+
+    fun status(cmd: EmuCommand): Status {
+        if (cmd.raw.contains("%ANDROIDAPP%")) return Status.READY
+        val id = cmd.emulatorId ?: return Status.APP_MISSING
+        if (resolveEmulator(id) == null) return Status.APP_MISSING
+        // Android doesn't let other apps see RetroArch's cores, so a core counts as installed once
+        // its save folder exists. A missing core makes RetroArch hang on a black screen.
+        val core = retroArchCore(cmd)
+        if (core != null && usedCores.isNotEmpty() && !coreUsed(core, cmd.label)) return Status.CORE_UNSEEN
+        return Status.READY
     }
+
+    fun isCommandAvailable(cmd: EmuCommand): Boolean = status(cmd) == Status.READY
+
+    private fun coreUsed(core: String, label: String): Boolean {
+        val folders = usedCores.mapTo(HashSet()) { norm(it) }
+        val names = listOfNotNull(norm(label.removeSuffix(" - Current")), CORE_FOLDERS[core]?.let(::norm), norm(core))
+        return names.any { it in folders }
+    }
+
+    private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
 
     /**
      * The command used when the user hasn't picked one: the first installed emulator. App-launch
@@ -256,3 +276,16 @@ class GameLauncher(private val context: Context, private val catalog: SystemCata
         return readText(Saf.docUri(tree, sibling.docId))
     }
 }
+
+/** The core file a RetroArch command loads, e.g. "snes9x" for snes9x_libretro_android.so. */
+fun retroArchCore(cmd: EmuCommand): String? =
+    Regex("cores/([A-Za-z0-9_+.-]+)_libretro_android\\.so").find(cmd.raw)?.groupValues?.get(1)
+
+/** RetroArch's own folder name for cores whose ES-DE label differs from it. */
+private val CORE_FOLDERS = mapOf(
+    "mednafen_wswan" to "Beetle WonderSwan", "nestopia" to "Nestopia", "bsnes_hd_beta" to "bsnes-hd beta",
+    "mesen2" to "Mesen2", "mamearcade" to "MAME", "mamemess" to "MAME", "pcsx2" to "LRPS2",
+    "mupen64plus_next_gles3" to "Mupen64Plus-Next", "mednafen_pce_fast" to "Beetle PCE Fast",
+    "vice_x64" to "VICE x64", "vice_x64sc" to "VICE x64sc", "melonds" to "melonDS", "melondsds" to "melonDS DS",
+)
+

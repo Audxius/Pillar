@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -182,6 +184,7 @@ fun PillarRoot(graph: AppGraph) {
                         }
                     }
                 }
+                SyncPill(Modifier.align(Alignment.TopEnd))
                 SnackbarHost(
                     snackbar,
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
@@ -312,13 +315,37 @@ fun rememberGameLauncher(): (Game, EmuCommand?) -> Unit {
             } else {
                 scope.launch {
                     // Never start a game while its save might still be downloading.
+                    if (graph.saveSync.status.value is io.github.audxius.pillar.data.SyncStatus.Running) {
+                        launch { snackbar.showSnackbar("Starting ${game.title} as soon as your saves finish syncing…") }
+                    }
                     graph.saveSync.awaitIdle()
+                    snackbar.currentSnackbarData?.dismiss()
                     when (val r = graph.launcher.launch(game, cmd)) {
                         LaunchResult.Started -> graph.markPlayed(game)
                         is LaunchResult.Failed -> snackbar.showSnackbar(r.message)
                     }
                 }
             }
+        }
+    }
+}
+
+/** A small "Syncing saves" pill in the top corner while a sync runs. */
+@Composable
+private fun SyncPill(modifier: Modifier) {
+    val graph = LocalGraph.current
+    val status by graph.saveSync.status.collectAsStateWithLifecycle()
+    val running = status as? io.github.audxius.pillar.data.SyncStatus.Running
+    AnimatedVisibility(running != null, modifier = modifier.statusBarsPadding().padding(top = 6.dp, end = 12.dp), enter = fadeIn(), exit = fadeOut()) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(Color(0xE6141824))
+                .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(running?.message ?: "Syncing saves", style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 1)
         }
     }
 }

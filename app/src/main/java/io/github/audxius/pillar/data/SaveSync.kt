@@ -313,13 +313,23 @@ class SaveSync(
         return listOfNotNull(s.savesDir?.let { "saves" to Uri.parse(it) }, s.statesDir?.let { "states" to Uri.parse(it) })
     }
 
+    private val coreFile = File(context.filesDir, "core-folders.txt")
+    private val _coreFolders = MutableStateFlow(runCatching { coreFile.readLines().filter { it.isNotBlank() }.toSet() }.getOrDefault(emptySet()))
+    /**
+     * RetroArch keeps saves and states in one folder per core ("Snes9x", "mGBA"), so these are the
+     * cores the user has actually played with, i.e. ones that are installed.
+     */
+    val coreFolders: StateFlow<Set<String>> = _coreFolders.asStateFlow()
+
     fun listLocal(): List<LocalSaveFile> {
         val out = ArrayList<LocalSaveFile>()
+        val cores = HashSet<String>()
         for ((top, tree) in roots()) {
             val rootId = runCatching { Saf.rootDocId(tree) }.getOrNull() ?: continue
             fun walk(docId: String, rel: String, depth: Int) {
                 for (e in Saf.list(context.contentResolver, tree, docId)) {
                     val path = if (rel.isEmpty()) e.name else "$rel/${e.name}"
+                    if (e.isDir && depth == 0) cores += e.name
                     if (e.isDir) { if (depth < 6) walk(e.docId, path, depth + 1); continue }
                     val key = "$top/$path"
                     if (SyncPlanner.ignored(key)) continue
@@ -327,6 +337,11 @@ class SaveSync(
                 }
             }
             walk(rootId, "", 0)
+        }
+        if (cores.isNotEmpty() && cores != _coreFolders.value) {
+            // Only ever grows: a core whose saves were cleaned up is still installed.
+            _coreFolders.value = _coreFolders.value + cores
+            runCatching { coreFile.writeText(_coreFolders.value.joinToString("\n")) }
         }
         return out
     }

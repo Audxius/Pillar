@@ -80,6 +80,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.data.GameLauncher
+import io.github.audxius.pillar.data.retroArchCore
 import io.github.audxius.pillar.data.LibraryLayout
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.RommRom
@@ -434,34 +436,62 @@ fun EmulatorSheet(
 ) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
-    val commands = remember(system, settings.customCommands) {
-        graph.launcher.commandsFor(system, settings).map { it to graph.launcher.isCommandAvailable(it) }
-            .sortedByDescending { it.second }
+    val usedCores by graph.saveSync.coreFolders.collectAsStateWithLifecycle()
+    val commands = remember(system, settings.customCommands, usedCores) {
+        graph.launcher.commandsFor(system, settings).map { it to graph.launcher.status(it) }
     }
+    val ready = commands.filter { it.second == GameLauncher.Status.READY }
+    val unseen = commands.filter { it.second == GameLauncher.Status.CORE_UNSEEN }
+    val missing = commands.filter { it.second == GameLauncher.Status.APP_MISSING }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
         Text(
-            "Installed emulators are listed first. Commands come from ES-DE's configuration, and you can add your own in Settings → Emulators.",
+            "Commands come from ES-DE's configuration; you can add your own in Settings → Emulators.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
         )
         LazyColumn(Modifier.navigationBarsPadding(), contentPadding = PaddingValues(12.dp)) {
             if (allowReset) item {
-                EmuRow("Automatic", "First installed emulator", selected == null, available = true) { onPick(null) }
+                EmuRow("Automatic", "First ready emulator", selected == null, available = true) { onPick(null) }
             }
-            items(commands, key = { it.first.label + it.first.custom }) { (cmd, available) ->
+            items(ready, key = { "r" + it.first.label + it.first.custom }) { (cmd, _) ->
                 val emuName = cmd.emulatorId?.let { id -> graph.launcher.resolveEmulator(id)?.label }
                 val sub = when {
                     cmd.custom -> "Custom command"
-                    available -> "via ${emuName ?: "installed app"}"
-                    else -> "Not installed"
+                    retroArchCore(cmd) != null -> "RetroArch core"
+                    else -> "via ${emuName ?: "installed app"}"
                 }
-                EmuRow(cmd.label, sub, cmd.label == selected, available) { onPick(cmd.label) }
+                EmuRow(cmd.label, sub, cmd.label == selected, available = true) { onPick(cmd.label) }
+            }
+            if (unseen.isNotEmpty()) {
+                item {
+                    SheetLabel(
+                        "Other RetroArch cores",
+                        "Pillar hasn't seen saves from these yet, so they may not be installed. A missing core leaves RetroArch on a black screen: install it first in RetroArch → Online Updater → Core Downloader.",
+                    )
+                }
+                items(unseen, key = { "u" + it.first.label + it.first.custom }) { (cmd, _) ->
+                    EmuRow(cmd.label, "Install in RetroArch first", cmd.label == selected, available = false) { onPick(cmd.label) }
+                }
+            }
+            if (missing.isNotEmpty()) {
+                item { SheetLabel("Not installed", null) }
+                items(missing, key = { "m" + it.first.label + it.first.custom }) { (cmd, _) ->
+                    EmuRow(cmd.label, "App not installed", cmd.label == selected, available = false) { onPick(cmd.label) }
+                }
             }
             if (commands.isEmpty()) item {
                 Text("No launch commands are known for this system.", modifier = Modifier.padding(12.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun SheetLabel(title: String, body: String?) {
+    Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 6.dp)) {
+        Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        if (body != null) Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
     }
 }
 

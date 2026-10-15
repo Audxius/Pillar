@@ -62,7 +62,7 @@ class AppGraph(val context: Context) {
     val identifier = GameIdentifier(context, http, catalog, scope)
     val rommRepo = RommRepository(context, romm, store, catalog, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
-    val artwork = ArtworkRepository(context, http, catalog, store, scope)
+    val artwork = ArtworkRepository(context, http, catalog, store, scope) { ra.hashTitles.value }
     val saveSync = SaveSync(context, http, store, scope)
 
     /**
@@ -145,6 +145,7 @@ class AppGraph(val context: Context) {
 
     init {
         identifyGames()
+        scope.launch { saveSync.coreFolders.collect { launcher.usedCores = it } }
         matchRetroAchievements()
         scope.launch {
             downloads.states.collect { states ->
@@ -304,9 +305,9 @@ class RaRepository(
     private suspend fun runMatch(games: List<Game>) {
         val known = store.userData.value.raIds
         val named = _hashTitles.value
-        // Already-matched games are hashed too when nothing has named them yet.
+        // Already-matched games are hashed too until their RetroAchievements title is known.
         val byConsole = games
-            .filter { !it.remote && it.id !in tried && (it.id !in known || (it.datName == null && it.id !in named)) }
+            .filter { !it.remote && it.id !in tried && (it.id !in known || it.id !in named) }
             .mapNotNull { g -> catalog.meta(g.system).raConsole?.let { it to g } }
             .groupBy({ it.first }, { it.second })
         val found = HashMap<String, Int>()

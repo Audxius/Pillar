@@ -256,7 +256,19 @@ class LibraryRepository(
         when (settings.coverStyle) {
             CoverStyle.SQUARE -> art?.sgdbSquare?.let(::add)
             CoverStyle.GRID -> art?.sgdbGrid?.let(::add)
-            CoverStyle.BOXART -> Unit
+            CoverStyle.BOXART -> {
+                // Real boxes that don't fit the tile (square GBA boxes in 3:4 tiles, wide SNES ones)
+                // would be framed; SteamGridDB's covers come in the tile's shape, so use those first.
+                val tile = when (settings.coverShape) {
+                    CoverShape.BOX -> 0.75f
+                    CoverShape.SQUARE -> 1f
+                    CoverShape.WIDE -> null
+                    CoverShape.NATURAL -> null
+                }
+                if (tile != null && kotlin.math.abs(kotlin.math.ln(catalog.boxRatio(game.system) / tile)) >= 0.16f) {
+                    (if (tile == 1f) art?.sgdbSquare else art?.sgdbGrid)?.let(::add)
+                }
+            }
         }
         addAll(mediaFor(game, MediaKind.COVER).take(1))
         user.remoteCover[game.id]?.let(::add)

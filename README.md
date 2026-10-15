@@ -55,8 +55,9 @@ Android 8.0 or newer.
   ES-DE). Multi-disc games and `.cue`/`.bin` sets show up once.
 - **200+ systems and hundreds of emulators.** Uses ES-DE's open Android system and emulator
   definitions: RetroArch cores, Dolphin, AetherSX2/NetherSX2, DuckStation, PPSSPP, melonDS,
-  Azahar, Eden, Flycast, MAME4droid and many more. Choose a default per system or per game, or
-  write your own launch command.
+  Azahar, Eden, Flycast, MAME4droid and many more. Choose a default per system or per game (from
+  the arrow on the Play button), or write your own launch command. RetroArch cores you haven't
+  used yet are flagged, since a missing core leaves RetroArch on a black screen.
 - **Artwork.** Box art from the libretro thumbnail server with fuzzy name matching (so
   "Final Fantasy 3.sfc" still finds its cover), your RomM covers, ES-DE's `downloaded_media`
   folder, or [SteamGridDB](https://www.steamgriddb.com) with a free API key (covers, square icons,
@@ -65,7 +66,8 @@ Android 8.0 or newer.
   server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
   deletes anything on the server and backs up any save before replacing it. When a save changed
-  on both sides, you see how old each copy is and pick which to keep.
+  on both sides, you see how old each copy is and pick which to keep. A small indicator shows while
+  saves sync, optionally even over a game you've gone back into.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
   you, and downloads keep going in the background.
 - **RetroAchievements.** Profile and your games as expandable cards with the achievements you

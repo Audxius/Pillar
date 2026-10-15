@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Optional: a small sync indicator over games (Settings → Saves & sync). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Pillar only needs to see emulators: every package in ES-DE's find rules, plus apps that
          can open game files (custom launch commands and Android ports). -->
     <queries>

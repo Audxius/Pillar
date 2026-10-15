@@ -1008,5 +1008,21 @@ private fun SavesPage() {
         }
         status?.let { (msg, ok) -> StatusLine(msg, ok) }
         SettingSwitch("Sync when Pillar opens", "Also runs when you return from a game", s.syncOnOpen) { v -> update { it.copy(syncOnOpen = v) } }
+        val context = androidx.compose.ui.platform.LocalContext.current
+        SettingSwitch(
+            "Show sync status over games",
+            "A small indicator in the corner if saves are still syncing after you've gone back into a game. Needs \"Display over other apps\".",
+            s.syncOverlay,
+        ) { v ->
+            update { it.copy(syncOverlay = v) }
+            if (v && Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(context)) {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}"))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+            }
+        }
     }
 }

@@ -31,6 +31,16 @@ class MainActivity : ComponentActivity() {
         setContent { PillarRoot(graph) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        (application as PillarApp).syncOverlay.foreground.value = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        (application as PillarApp).syncOverlay.foreground.value = false
+    }
+
     override fun onResume() {
         super.onResume()
         // Coming back from a game is the moment new achievements or installs show up.
