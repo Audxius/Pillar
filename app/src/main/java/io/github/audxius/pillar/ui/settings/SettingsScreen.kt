@@ -107,7 +107,7 @@ import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.Palettes
 import kotlinx.coroutines.launch
 
-const val REPO_URL = "https://github.com/audxius/pillar"
+const val REPO_URL = "https://github.com/Audxius/Pillar"
 
 enum class SettingsPage(val title: String, val description: String) {
     APPEARANCE("Appearance", "Theme, colors, fonts, background, covers"),

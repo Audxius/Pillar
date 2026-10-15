@@ -22,7 +22,7 @@ Grab the APK from [Releases](../../releases/latest), or track it with
 [Obtainium](https://github.com/ImranR98/Obtainium) so you get updates automatically:
 
 1. In Obtainium, tap **Add App**.
-2. Paste `https://github.com/audxius/pillar` and tap **Add**.
+2. Paste `https://github.com/Audxius/Pillar` and tap **Add**.
 
 Android 8.0 or newer.
 
