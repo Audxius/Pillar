@@ -62,6 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.data.LibraryRepository
+import io.github.audxius.pillar.data.ThumbMatch
 import io.github.audxius.pillar.data.LocalSaveFile
 import io.github.audxius.pillar.data.SyncFileState
 import io.github.audxius.pillar.data.SyncStatus
@@ -84,6 +86,69 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/**
+ * Finds the game a save belongs to. RetroArch names saves after the ROM file, so the file name
+ * is tried first, then a looser title match; saves for games that aren't on this device get a
+ * stand-in game (system from the emulator core's folder) so they still show a cover and a clean name.
+ */
+private class SaveGameFinder(games: List<Game>) {
+    private val byStem = games.groupBy { it.baseName.lowercase() }
+    private val byKey = HashMap<String, Game>().apply {
+        games.forEach { g ->
+            putIfAbsent(ThumbMatch.key(g.fileName), g)
+            putIfAbsent(ThumbMatch.key("${g.title}.x"), g)
+            g.datName?.let { putIfAbsent(ThumbMatch.key("$it.x"), g) }
+        }
+    }
+
+    fun find(f: LocalSaveFile): Game {
+        val stem = saveStem(f.name)
+        byStem[stem.lowercase()]?.firstOrNull()?.let { return it }
+        val key = ThumbMatch.key("$stem.x")
+        if (key.isNotEmpty()) byKey[key]?.let { return it }
+        // Keys look like "saves/<core folder>/<name>.srm".
+        val core = f.key.split('/').let { if (it.size >= 3) it[it.size - 2] else "" }
+        return Game(
+            id = "save:${core.lowercase()}/${stem.lowercase()}",
+            system = coreSystem(core) ?: "unknown",
+            title = LibraryRepository.cleanTitle("$stem.x"),
+            fileName = "$stem.x",
+            docUri = "",
+            treeUri = "",
+        )
+    }
+}
+
+/** The system a RetroArch core's save folder most likely belongs to. */
+private fun coreSystem(core: String): String? {
+    val c = core.lowercase()
+    return when {
+        "melonds" in c || "desmume" in c || "noods" in c -> "nds"
+        "snes" in c || "bsnes" in c || "mesen-s" in c -> "snes"
+        "mgba" in c || "gpsp" in c || "vba" in c || "meteor" in c -> "gba"
+        "gambatte" in c || "sameboy" in c || "gearboy" in c || "tgbdual" in c -> "gb"
+        "mupen" in c || "parallel n64" in c -> "n64"
+        "genesis plus" in c || "picodrive" in c || "blastem" in c -> "genesis"
+        "gearsystem" in c || "smsplus" in c -> "mastersystem"
+        "pcsx" in c || "swanstation" in c || "duckstation" in c || "beetle psx" in c -> "psx"
+        "ppsspp" in c -> "psp"
+        "mesen" in c || "fceumm" in c || "nestopia" in c || "quicknes" in c -> "nes"
+        "pce" in c -> "pcengine"
+        "flycast" in c || "redream" in c -> "dreamcast"
+        "saturn" in c || "yabause" in c || "kronos" in c -> "saturn"
+        "dolphin" in c -> "gc"
+        "citra" in c || "azahar" in c -> "n3ds"
+        "stella" in c -> "atari2600"
+        "handy" in c || "lynx" in c -> "atarilynx"
+        "wonderswan" in c || "cygne" in c -> "wonderswan"
+        "neopop" in c || "race" in c -> "ngpc"
+        "pokemini" in c -> "pokemini"
+        "beetle vb" in c -> "virtualboy"
+        "fbneo" in c || "finalburn" in c || "mame" in c -> "arcade"
+        else -> null
+    }
+}
 
 /** RetroArch save and state extensions, used to tell saves and states apart in the list. */
 private fun isState(name: String) = Regex("\\.state(\\d+|\\.auto)?$|\\.state\\d*\\.png$", RegexOption.IGNORE_CASE).containsMatchIn(name)
@@ -118,7 +183,7 @@ fun SavesScreen() {
         }
     }
 
-    val gamesByStem = remember(games) { games.groupBy { it.baseName.lowercase() } }
+    val finder = remember(games) { SaveGameFinder(games) }
     val grouped = remember(files) {
         files.orEmpty().groupBy { saveStem(it.name).lowercase() }.entries
             .sortedByDescending { e -> e.value.maxOf { it.modified } }
@@ -225,7 +290,7 @@ fun SavesScreen() {
         } else {
             item { SectionHeader("By game") }
             items(grouped, key = { it.key }) { (stem, list) ->
-                SaveGroup(gamesByStem[stem]?.firstOrNull(), list, states, onDelete = { deleting = it })
+                SaveGroup(finder.find(list.first()), list, states, onDelete = { deleting = it })
             }
         }
     }
@@ -344,7 +409,7 @@ private fun CopyChoice(
 
 /** One game's saves: collapsed to a summary, expands to its files. */
 @Composable
-private fun SaveGroup(game: Game?, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
+private fun SaveGroup(game: Game, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
     val nav = LocalNav.current
     var open by rememberSaveable(files.first().key) { mutableStateOf(false) }
     val chevron by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
@@ -362,14 +427,10 @@ private fun SaveGroup(game: Game?, files: List<LocalSaveFile>, states: Map<Strin
             Modifier.fillMaxWidth().tappable { open = !open }.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (game != null) GameCover(game, Modifier.width(52.dp), compact = true)
-            else Box(
-                Modifier.size(52.dp, 69.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Rounded.Save, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            GameCover(game, Modifier.width(52.dp), ratio = 0.75f, compact = true)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(game?.let { gameTitle(it) } ?: saveStem(files.first().name), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(gameTitle(game), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val saves = shown.count { !isState(it.name) }
                 val st = shown.count { isState(it.name) }
                 Text(
@@ -394,7 +455,7 @@ private fun SaveGroup(game: Game?, files: List<LocalSaveFile>, states: Map<Strin
         AnimatedVisibility(open, enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(), exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()) {
             Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
                 shown.forEach { f -> SaveFileRow(f, states[f.key], onDelete) }
-                if (game != null) {
+                if (!game.id.startsWith("save:")) {
                     TextButton(onClick = { nav.navigate(Routes.game(game.id, "saves")) }) { Text("Open game") }
                 }
             }

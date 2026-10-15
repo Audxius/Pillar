@@ -85,6 +85,7 @@ import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.chipColors
 import io.github.audxius.pillar.ui.theme.styledSurface
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -122,7 +123,14 @@ fun HomeCarouselScreen() {
             info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2 - center) }?.index ?: 0
         }
     }
-    val selected = ordered.getOrNull(selectedIndex.coerceIn(0, ordered.lastIndex)) ?: ordered.first()
+    val centered = ordered.getOrNull(selectedIndex.coerceIn(0, ordered.lastIndex)) ?: ordered.first()
+    // While flinging, the logo, backdrop and lookups wait until a game stays centered for a moment;
+    // loading them for every cover that flies past is what made fast scrolling stutter.
+    var selected by remember { mutableStateOf(centered) }
+    LaunchedEffect(centered.id, listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) delay(260)
+        selected = centered
+    }
     val hero = rememberHeroSources(selected)
     val ambientArt = LocalAmbientArt.current
     val ambient = LocalAmbient.current
@@ -135,23 +143,23 @@ fun HomeCarouselScreen() {
     LaunchedEffect(selected.id) { if (!selected.remote) runCatching { graph.ra.idFor(selected, graph.catalog) } }
 
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
-        val itemHeight = (maxHeight * 0.27f).coerceIn(130.dp, 250.dp)
+        val itemHeight = (maxHeight * 0.3f).coerceIn(130.dp, 270.dp)
         Column(Modifier.fillMaxSize()) {
             // The logo gets all the room the carousel and buttons don't need.
-            Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                 Crossfade(targetState = selected, animationSpec = tween(200), label = "logo") { g ->
                     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         TitleOrLogo(
-                            g, maxWidth = minOf(maxWidth, 340.dp), maxHeight = minOf(maxHeight, 170.dp),
+                            g, maxWidth = maxWidth, maxHeight = minOf(maxHeight, 240.dp),
                             alignment = Alignment.Center, big = true,
                         )
                     }
                 }
             }
-            GameMetaPills(selected, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-            Spacer(Modifier.height(14.dp))
+            GameMetaPills(selected, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+            Spacer(Modifier.height(12.dp))
             HomePlayButton(selected)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             Carousel(ordered, listState, selectedIndex, itemHeight, onLongPress = { quick = it })
             Text(
                 "${selectedIndex + 1} / ${ordered.size}",
@@ -160,7 +168,7 @@ fun HomeCarouselScreen() {
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 2.dp),
             )
             // Room for the floating dock.
-            Spacer(Modifier.navigationBarsPadding().height(100.dp))
+            Spacer(Modifier.navigationBarsPadding().height(96.dp))
         }
     }
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
@@ -257,7 +265,7 @@ private fun HomePlayButton(game: Game) {
             else -> "Play"
         },
         icon = if (game.remote) Icons.Rounded.CloudDownload else Icons.Rounded.PlayArrow,
-        modifier = Modifier.padding(horizontal = 40.dp).fillMaxWidth().height(52.dp),
+        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(54.dp),
         progress = (dl as? DownloadState.Running)?.fraction?.takeIf { busy },
     ) { if (!busy) launch(game, null) }
 }
@@ -274,11 +282,16 @@ fun TitleOrLogo(g: Game, maxWidth: Dp = 260.dp, maxHeight: Dp = 72.dp, alignment
     // than the plain title for a moment.
     val pending = settings.showLogos && art == null
     when {
-        logo != null && !failed -> GameLogo(logo, gameTitle(g), maxWidth = maxWidth, maxHeight = maxHeight, alignment = alignment, onFailed = { failed = true })
+        logo != null && !failed -> GameLogo(
+            logo, gameTitle(g), maxWidth = maxWidth, maxHeight = maxHeight, alignment = alignment,
+            // A big logo fills most of its box; small ones keep the shared visual weight.
+            area = if (big) maxWidth.value * maxHeight.value * 0.62f else 13000f,
+            onFailed = { failed = true },
+        )
         pending -> Unit
         else -> Text(
             gameTitle(g),
-            style = if (big) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineSmall,
+            style = if (big) MaterialTheme.typography.displayMedium else MaterialTheme.typography.headlineSmall,
             maxLines = if (big) 3 else 2, overflow = TextOverflow.Ellipsis,
             textAlign = if (alignment == Alignment.Center) TextAlign.Center else TextAlign.Start,
         )

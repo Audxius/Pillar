@@ -44,6 +44,8 @@ data class ArtSet(
     val sgdbChecked: Boolean = false,
     /** Bumped when matching rules change, so older results get looked up again. */
     val v: Int = 0,
+    /** The checksum-identified name this was looked up with; a new identification triggers a fresh lookup. */
+    val idName: String? = null,
 )
 
 @Serializable
@@ -60,6 +62,7 @@ private data class SgdbImage(
     val nsfw: Boolean = false,
     val humor: Boolean = false,
     @SerialName("style") val style: String? = null,
+    val language: String? = null,
 )
 
 /**
@@ -126,8 +129,10 @@ class ArtworkRepository(
     fun ensure(game: Game) {
         val settings = store.settings.value
         val existing = _art.value[game.id]
-        val needLibretro = existing?.libretroChecked != true && settings.onlineCovers
-        val needSgdb = settings.sgdbKey.isNotBlank() && existing?.sgdbChecked != true
+        // Identified since the last lookup: the official name finds better art.
+        val renamed = existing != null && game.datName != null && existing.idName != game.datName
+        val needLibretro = (existing?.libretroChecked != true || renamed) && settings.onlineCovers
+        val needSgdb = settings.sgdbKey.isNotBlank() && (existing?.sgdbChecked != true || renamed)
         if (!needLibretro && !needSgdb) return
         val failed = failedAt[game.id]
         if (failed != null && System.currentTimeMillis() - failed < 10 * 60 * 1000) return
@@ -162,7 +167,8 @@ class ArtworkRepository(
         var set = start
         if (libretro) {
             val system = catalog.meta(game.system).libretro
-            val name = system?.let { sys -> index(sys)?.best(game.fileName) }
+            // The checksum-identified name is exact; the file name is a fallback guess.
+            val name = system?.let { sys -> index(sys)?.let { idx -> game.datName?.let { idx.best("$it.x") } ?: idx.best(game.fileName) } }
             set = set.copy(
                 matchedName = name,
                 boxart = name?.let { libretroUrl(system, "Named_Boxarts", it) },
@@ -178,7 +184,7 @@ class ArtworkRepository(
             if (found != null) set = found.copy(boxart = set.boxart, snap = set.snap, matchedName = set.matchedName, libretroChecked = set.libretroChecked)
             else failedAt[game.id] = System.currentTimeMillis()
         }
-        set = set.copy(resolvedAt = System.currentTimeMillis(), v = ART_VERSION)
+        set = set.copy(resolvedAt = System.currentTimeMillis(), v = ART_VERSION, idName = game.datName)
         _art.update { it + (game.id to set) }
         dirty = true
     }
@@ -252,13 +258,17 @@ class ArtworkRepository(
     private suspend fun sgdb(game: Game, matchedName: String?): ArtSet? {
         // Prefer the clean database title the file matched ("Pokemon - FireRed Version") over the file name.
         val matched = matchedName?.let { LibraryRepository.cleanTitle("$it.x") }
-        val title = store.userData.value.customTitle[game.id] ?: matched ?: game.title
+        val title = store.userData.value.customTitle[game.id] ?: (if (game.datName != null) game.title else null) ?: matched ?: game.title
         val results = sgdbGet("/search/autocomplete/${Uri.encode(title)}")
             ?.let { runCatching { PillarJson.decodeFromJsonElement(ListSerializer(SgdbGame.serializer()), it) }.getOrNull() }
             ?: return ArtSet(sgdbChecked = true)
         val match = SgdbMatch.pick(title, results.map { it.name })?.let { results[it] } ?: return ArtSet(sgdbChecked = true)
 
-        fun List<SgdbImage>.pick() = maxByOrNull { it.score }?.url?.takeIf { it.isNotBlank() }
+        // Art in the game's language first: Japanese only for Japan-only releases.
+        val tags = LibraryRepository.tags(game.datName?.let { "$it.x" } ?: game.fileName).joinToString(",").lowercase()
+        val lang = if ("japan" in tags && "usa" !in tags && "europe" !in tags && "world" !in tags) "ja" else "en"
+        fun SgdbImage.langRank() = when (language) { lang -> 2; null, "" -> 1; else -> 0 }
+        fun List<SgdbImage>.pick() = maxWithOrNull(compareBy<SgdbImage> { it.langRank() }.thenBy { it.score })?.url?.takeIf { it.isNotBlank() }
         val grid = sgdbImages("grids", match.id, mapOf("dimensions" to "600x900,342x482,660x930")).pick()
         val square = sgdbImages("grids", match.id, mapOf("dimensions" to "512x512,1024x1024")).pick()
             ?: sgdbImages("icons", match.id, emptyMap()).filter { it.width >= 128 }.pick()

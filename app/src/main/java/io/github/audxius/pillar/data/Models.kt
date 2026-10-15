@@ -197,6 +197,8 @@ data class Game(
     /** Set for games that live on the RomM server and aren't on this device yet. */
     val rommId: Int? = null,
     val remoteCover: String? = null,
+    /** Official name found by checksum (No-Intro, or RetroAchievements), e.g. "Sonic & Knuckles + Sonic The Hedgehog 3 (World)". */
+    val datName: String? = null,
 ) {
     val baseName: String get() = fileName.substringBeforeLast('.', fileName)
     val remote: Boolean get() = docUri.isEmpty() && rommId != null

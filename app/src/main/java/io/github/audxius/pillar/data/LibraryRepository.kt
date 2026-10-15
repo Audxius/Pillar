@@ -31,8 +31,32 @@ class LibraryRepository(
     private val cacheFile = File(context.filesDir, "library.json")
     private val scanMutex = Mutex()
 
+    /** Games as scanned, titled from their file names. */
+    @Volatile private var scanned: List<Game> = emptyList()
+    @Volatile private var names: Map<String, String> = emptyMap()
+    private val _scannedFlow = MutableStateFlow<List<Game>>(emptyList())
+    val scannedGames: StateFlow<List<Game>> = _scannedFlow.asStateFlow()
     private val _games = MutableStateFlow<List<Game>>(emptyList())
+    /** Games with the names they were identified by, when known. */
     val games: StateFlow<List<Game>> = _games.asStateFlow()
+
+    private fun setScanned(list: List<Game>) {
+        scanned = list
+        _scannedFlow.value = list
+        publish()
+    }
+
+    /** Applies names found by checksum (game id -> official name with tags). */
+    fun applyNames(map: Map<String, String>) {
+        names = map
+        publish()
+    }
+
+    private fun publish() {
+        val n = names
+        _games.value = scanned.map { g -> n[g.id]?.let { g.copy(title = cleanTitle("$it.x"), datName = it) } ?: g }
+            .sortedBy { it.title.lowercase() }
+    }
 
     private val _scan = MutableStateFlow(ScanState())
     val scan: StateFlow<ScanState> = _scan.asStateFlow()
@@ -47,7 +71,7 @@ class LibraryRepository(
             val cached = runCatching {
                 PillarJson.decodeFromString(ListSerializer(Game.serializer()), cacheFile.readText())
             }.getOrNull()
-            if (cached != null) _games.value = cached
+            if (cached != null) setScanned(cached)
             indexMedia()
             // Show the cached library instantly, then pick up files added since last time.
             if (store.settings.value.scanRoots.isNotEmpty()) scan()
@@ -87,7 +111,7 @@ class LibraryRepository(
                 }
             }
             val distinct = found.distinctBy { it.id }.sortedBy { it.title.lowercase() }
-            _games.value = distinct
+            setScanned(distinct)
             runCatching {
                 cacheFile.writeText(PillarJson.encodeToString(ListSerializer(Game.serializer()), distinct))
             }
@@ -114,9 +138,9 @@ class LibraryRepository(
                         .forEach { scanSystem(tree, it.docId, system, rootPath, found, settings) }
                 }
             }
-            val merged = (_games.value.filter { it.system != system } + found)
+            val merged = (scanned.filter { it.system != system } + found)
                 .distinctBy { it.id }.sortedBy { it.title.lowercase() }
-            _games.value = merged
+            setScanned(merged)
             runCatching { cacheFile.writeText(PillarJson.encodeToString(ListSerializer(Game.serializer()), merged)) }
         }
     }
@@ -289,6 +313,8 @@ class LibraryRepository(
             t = t.replace(Regex("\\s*[(\\[][^)\\]]*[)\\]]"), "").replace('_', ' ').trim()
             val m = Regex("^(.*?), (The|A|An)(\\s+-.*|:.*)?$", RegexOption.IGNORE_CASE).find(t)
             if (m != null) t = "${m.groupValues[2]} ${m.groupValues[1]}${m.groupValues[3]}"
+            // "Pokemon - FireRed Version" reads better as "Pokemon: FireRed Version".
+            t = t.replaceFirst(" - ", ": ")
             return t.replace(Regex("\\s{2,}"), " ").ifBlank { stem(fileName) }
         }
 

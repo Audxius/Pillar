@@ -8,7 +8,7 @@ import org.junit.Test
 class TitleTest {
     @Test
     fun cleansNoIntroNames() {
-        assertEquals("The Legend of Zelda - A Link to the Past", LibraryRepository.cleanTitle("Legend of Zelda, The - A Link to the Past (USA).sfc"))
+        assertEquals("The Legend of Zelda: A Link to the Past", LibraryRepository.cleanTitle("Legend of Zelda, The - A Link to the Past (USA).sfc"))
         assertEquals("Super Mario World", LibraryRepository.cleanTitle("Super Mario World (USA) [!].sfc"))
         assertEquals("The Lost Vikings", LibraryRepository.cleanTitle("Lost Vikings, The (Europe) (En,Fr,De).sfc"))
         assertEquals("Final Fantasy VII", LibraryRepository.cleanTitle("Final Fantasy VII (USA) (Disc 1).chd"))

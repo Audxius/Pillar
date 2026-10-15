@@ -9,6 +9,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -57,6 +59,7 @@ class AppGraph(val context: Context) {
     val romm = RommClient(http) { store.settings.value }
     val raClient = RaClient(context, http) { store.settings.value }
     val ra = RaRepository(context, raClient, store, catalog, scope)
+    val identifier = GameIdentifier(context, http, catalog, scope)
     val rommRepo = RommRepository(context, romm, store, catalog, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
     val artwork = ArtworkRepository(context, http, catalog, store, scope)
@@ -130,7 +133,18 @@ class AppGraph(val context: Context) {
             .collect { ra.matchLibrary(it) }
     }
 
+    /** Names games by checksum: No-Intro first, RetroAchievements' hash match as a fallback. */
+    private fun identifyGames() {
+        scope.launch { library.scannedGames.collect { if (it.isNotEmpty()) identifier.identify(it) } }
+        scope.launch {
+            combine(identifier.names, ra.hashTitles) { noIntro, raTitles -> raTitles + noIntro }
+                .distinctUntilChanged()
+                .collect { library.applyNames(it) }
+        }
+    }
+
     init {
+        identifyGames()
         matchRetroAchievements()
         scope.launch {
             downloads.states.collect { states ->
@@ -232,16 +246,35 @@ class RaRepository(
         if (!settings.raConfigured || !settings.raMatchTitles) return null
         val console = catalog.meta(game.system).raConsole ?: return null
         val index = runCatching { client.gameIndex(console) }.getOrNull() ?: return null
-        val id = withContext(Dispatchers.IO) { match(game, console, index) }.also { hashes.save() } ?: return null
+        val id = withContext(Dispatchers.IO) { match(game, console, index) }.also { hashes.save(); saveTitles() } ?: return null
         save(mapOf(game.id to id))
         return id
     }
 
     /** ROM hash first, like RetroArch; then the user's custom title and the file name. */
-    private fun match(game: Game, console: Int, index: RaGameIndex): Int? =
-        index.byHash(hashes.hashFor(game, console))
-            ?: index.byTitle(store.userData.value.customTitle[game.id])
+    private fun match(game: Game, console: Int, index: RaGameIndex): Int? {
+        val byHash = index.byHash(hashes.hashFor(game, console))
+        if (byHash != null) {
+            // A hash match also names the game, for files No-Intro doesn't know.
+            index.title(byHash)?.let { t -> if (_hashTitles.value[game.id] != t) _hashTitles.update { it + (game.id to t) } }
+            return byHash
+        }
+        return index.byTitle(store.userData.value.customTitle[game.id])
+            ?: game.datName?.let { index.byFileName("$it.x") }
             ?: index.byFileName(game.fileName)
+    }
+
+    private val titlesFile = File(context.filesDir, "ra-titles.json")
+    private val titlesSerializer = kotlinx.serialization.builtins.MapSerializer(String.serializer(), String.serializer())
+    private val _hashTitles = MutableStateFlow<Map<String, String>>(
+        runCatching { PillarJson.decodeFromString(titlesSerializer, titlesFile.readText()) }.getOrDefault(emptyMap())
+    )
+    /** Game id -> RetroAchievements title, for games identified by ROM hash. */
+    val hashTitles: StateFlow<Map<String, String>> = _hashTitles.asStateFlow()
+
+    private fun saveTitles() {
+        runCatching { titlesFile.writeText(PillarJson.encodeToString(titlesSerializer, _hashTitles.value)) }
+    }
 
     private suspend fun save(found: Map<String, Int>) {
         if (found.isEmpty()) return
@@ -270,8 +303,10 @@ class RaRepository(
 
     private suspend fun runMatch(games: List<Game>) {
         val known = store.userData.value.raIds
+        val named = _hashTitles.value
+        // Already-matched games are hashed too when nothing has named them yet.
         val byConsole = games
-            .filter { !it.remote && it.id !in known && it.id !in tried }
+            .filter { !it.remote && it.id !in tried && (it.id !in known || (it.datName == null && it.id !in named)) }
             .mapNotNull { g -> catalog.meta(g.system).raConsole?.let { it to g } }
             .groupBy({ it.first }, { it.second })
         val found = HashMap<String, Int>()
@@ -294,6 +329,7 @@ class RaRepository(
         } finally {
             withContext(NonCancellable) { save(found) }
             hashes.save()
+            saveTitles()
         }
     }
 }

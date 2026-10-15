@@ -41,8 +41,10 @@ Android 8.0 or newer.
   stay uniform: art that doesn't match the tile is shown whole in a frame instead of cropped.
 - **Game pages.** Cover, logo, the emulator it will use right above Play, save files, RomM info
   and every achievement (still to unlock first). Favorite, cover, rename and hide live in the ⋮ menu.
-- **Library.** Your consoles as cards; pick one to browse its games with search, sort, filters
-  and its default emulator, in an evenly aligned cover grid.
+- **Library.** Your consoles as cards (controller icon over a tinted collage of their games);
+  pick one to browse its games with search, sort, filters and its default emulator.
+- **Knows your games.** Cartridge-era ROMs are identified by checksum against the No-Intro
+  databases, so a file called `sonic3k.md` still gets its real name, box art and logo.
 - **Three looks.** Glassmorphism (default: your game's art behind frosted panels); Frutiger Aero
   (Vista sky, light rays, bubbles, glossy glass and aqua buttons); and Y2K (PS2 and Dreamcast
   menus: a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons, Exo 2
@@ -111,6 +113,10 @@ secrets: `PILLAR_KEYSTORE_BASE64`, `PILLAR_KEYSTORE_PASSWORD`, `PILLAR_KEY_ALIAS
 - [ES-DE](https://es-de.org) for the system and emulator definitions (MIT).
 - [RomM](https://romm.app), [RetroAchievements](https://retroachievements.org) and the
   [libretro thumbnails](https://thumbnails.libretro.com) project.
+- [libretro-database](https://github.com/libretro/libretro-database) for the No-Intro checksum
+  databases used to identify games (downloaded on demand).
+- Console icons from libretro's [retroarch-assets](https://github.com/libretro/retroarch-assets)
+  (monochrome XMB theme, CC BY 4.0), loaded on demand.
 - Inspired by the look of [iiSU](https://github.com/iisu-network/iiSU). Pillar is an independent
   project and shares no code or assets with it.
 

@@ -124,6 +124,7 @@ internal data class RaListedGame(
 class RaGameIndex private constructor(games: List<RaListedGame>) {
     private val hashes = HashMap<String, Int>()
     private val byName = HashMap<String, Int>()
+    private val names = HashMap<Int, String>()
     private val titles: ThumbIndex
 
     init {
@@ -131,6 +132,7 @@ class RaGameIndex private constructor(games: List<RaListedGame>) {
             // "~Hack~", "~Homebrew~", "~Test Kit~" and subsets never belong to a retail dump.
             if (g.id == 0 || g.title.startsWith("~") || g.title.contains("[Subset", ignoreCase = true)) continue
             g.hashes.forEach { hashes.putIfAbsent(it.lowercase(), g.id) }
+            names[g.id] = g.title.substringBefore('|').trim()
             // RA lists alternate names as "Title | Alt Title". The fake extension keeps
             // ThumbMatch from reading a trailing ".3" as one.
             g.title.split('|').map { it.trim() }.filter { it.isNotEmpty() }.forEach { byName.putIfAbsent("$it.ra", g.id) }
@@ -139,6 +141,9 @@ class RaGameIndex private constructor(games: List<RaListedGame>) {
     }
 
     fun byHash(md5: String?): Int? = md5?.let { hashes[it.lowercase()] }
+
+    /** RetroAchievements' title for a game id (the first of its alternate names). */
+    fun title(id: Int): String? = names[id]
 
     /** Match for a file name; its tags (region, revision) help pick between close titles. */
     fun byFileName(fileName: String?): Int? = fileName?.takeIf { it.isNotBlank() }?.let(titles::best)?.let { byName[it] }

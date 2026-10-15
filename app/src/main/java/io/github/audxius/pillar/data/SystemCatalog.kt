@@ -58,6 +58,9 @@ class SystemCatalog(context: Context) {
 
     fun fullName(id: String): String = systems[id]?.fullName ?: extraNames[id] ?: id
 
+    /** A console's everyday name, e.g. "Super Nintendo" or "PlayStation 2": longer than the short label, shorter than ES-DE's. */
+    fun displayName(id: String): String = DISPLAY[id] ?: META[id]?.short ?: extraNames[id] ?: fullName(id)
+
     /** Matches a folder name to a system, accepting ES-DE ids plus common alternative names. */
     fun resolveFolder(name: String): String? {
         val n = name.lowercase().trim()
@@ -144,6 +147,20 @@ class SystemCatalog(context: Context) {
     }
 
     companion object {
+        private val DISPLAY = mapOf(
+            "amstradcpc" to "Amstrad CPC", "fbneo" to "FinalBurn Neo", "atari2600" to "Atari 2600",
+            "atari5200" to "Atari 5200", "atari7800" to "Atari 7800", "atarijaguar" to "Atari Jaguar",
+            "atarijaguarcd" to "Atari Jaguar CD", "atarilynx" to "Atari Lynx", "atarist" to "Atari ST",
+            "c64" to "Commodore 64", "colecovision" to "ColecoVision", "fds" to "Famicom Disk System",
+            "gameandwatch" to "Game & Watch", "gba" to "Game Boy Advance", "gbc" to "Game Boy Color",
+            "sega32x" to "Sega 32X", "n3ds" to "Nintendo 3DS", "n64" to "Nintendo 64", "nds" to "Nintendo DS",
+            "snes" to "Super Nintendo", "snesna" to "Super Nintendo", "ngp" to "Neo Geo Pocket",
+            "ngpc" to "Neo Geo Pocket Color", "tg16" to "TurboGrafx-16", "pcenginecd" to "PC Engine CD",
+            "tg-cd" to "TurboGrafx-CD", "psx" to "PlayStation", "ps2" to "PlayStation 2", "ps3" to "PlayStation 3",
+            "psp" to "PlayStation Portable", "psvita" to "PlayStation Vita", "wonderswancolor" to "WonderSwan Color",
+            "sg-1000" to "Sega SG-1000", "gc" to "GameCube", "msx2" to "MSX2", "n64dd" to "Nintendo 64DD",
+        )
+
         private fun shortFromFullName(full: String): String =
             full.substringBefore('(').trim().let { if (it.length <= 14) it else it.split(' ').takeLast(2).joinToString(" ") }
 

@@ -97,6 +97,12 @@ import io.github.audxius.pillar.ui.components.SectionHeader
 import io.github.audxius.pillar.ui.components.gameTitle
 import io.github.audxius.pillar.ui.components.systemColor
 import io.github.audxius.pillar.ui.components.systemName
+import io.github.audxius.pillar.ui.components.systemDisplayName
+import io.github.audxius.pillar.ui.components.MultiImage
+import io.github.audxius.pillar.ui.components.rememberCoverSources
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.fillMaxHeight
 import io.github.audxius.pillar.ui.components.tappable
 import io.github.audxius.pillar.ui.settings.SettingsPage
 import io.github.audxius.pillar.ui.theme.LocalAmbient
@@ -171,7 +177,7 @@ fun LibraryScreen() {
     }
 }
 
-/** A console in the library: its name, maker and year, game count and a fan of its covers. */
+/** A console in the library: a tinted collage of its covers, its controller icon, full name and game count. */
 @Composable
 private fun PlatformCard(system: String, games: List<Game>, onClick: () -> Unit) {
     val graph = LocalGraph.current
@@ -182,46 +188,55 @@ private fun PlatformCard(system: String, games: List<Game>, onClick: () -> Unit)
     val shape = RoundedCornerShape(corner * 0.8f)
     // The games you played last stand in for the console; otherwise the first few alphabetically.
     val picks = remember(games, user.lastPlayed) {
-        games.sortedWith(compareByDescending<Game> { user.lastPlayed[it.id] ?: 0L }.thenBy { it.title.lowercase() }).take(3)
+        games.sortedWith(compareByDescending<Game> { user.lastPlayed[it.id] ?: 0L }.thenBy { it.title.lowercase() }).take(4)
     }
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().aspectRatio(0.92f)
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(0.9f)
             .styledSurface(shape)
-            .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.34f), color.copy(alpha = 0.04f))))
             .tappable(shape, onClick = onClick),
     ) {
-        val coverW = maxWidth * 0.42f
-        // Most recent in front, the next two fanned out behind it, bleeding off the bottom edge.
-        listOf(2 to 1f, 1 to -1f, 0 to 0f).forEach { (i, side) ->
-            val g = picks.getOrNull(i) ?: return@forEach
-            GameCover(
-                g,
-                Modifier.align(Alignment.BottomCenter).width(coverW)
-                    .graphicsLayer {
-                        translationX = side * coverW.toPx() * 0.62f
-                        translationY = coverW.toPx() * (if (i == 0) 0.12f else 0.26f)
-                        rotationZ = side * 9f
-                        val s = if (i == 0) 1f else 0.9f
-                        scaleX = s; scaleY = s
-                    },
-                ratio = 0.75f,
-                compact = true,
+        // Covers in the background, two by two.
+        Column(Modifier.matchParentSize()) {
+            for (row in 0 until 2) Row(Modifier.weight(1f)) {
+                for (col in 0 until 2) {
+                    val g = picks.getOrNull(row * 2 + col) ?: picks.getOrNull((row * 2 + col) % maxOf(picks.size, 1))
+                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                        if (g != null) MultiImage(rememberCoverSources(g), Modifier.matchParentSize(), contentScale = ContentScale.Crop, decodeSize = 300) {}
+                    }
+                }
+            }
+        }
+        // The console's color washes over them so the name and icon stay readable.
+        Box(
+            Modifier.matchParentSize().background(
+                Brush.verticalGradient(
+                    0f to lerp(color, Color.Black, 0.25f).copy(alpha = 0.78f),
+                    0.55f to lerp(color, Color.Black, 0.45f).copy(alpha = 0.86f),
+                    1f to lerp(color, Color.Black, 0.7f).copy(alpha = 0.96f),
+                )
+            )
+        )
+        meta.libretro?.let { lib ->
+            AsyncImage(
+                model = "https://raw.githubusercontent.com/libretro/retroarch-assets/master/xmb/monochrome/png/${android.net.Uri.encode(lib)}.png",
+                contentDescription = null,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White),
+                modifier = Modifier.align(Alignment.Center).padding(bottom = 30.dp).fillMaxWidth(0.5f).aspectRatio(1f).graphicsLayer { alpha = 0.95f },
             )
         }
-        Column(Modifier.fillMaxWidth().padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    systemName(system), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "${games.size}",
-                    style = MaterialTheme.typography.labelLarge, color = Color.White,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(color).padding(horizontal = 9.dp, vertical = 2.dp),
-                )
-            }
+        Text(
+            "${games.size}",
+            style = MaterialTheme.typography.labelLarge, color = Color.White,
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.35f)).padding(horizontal = 9.dp, vertical = 2.dp),
+        )
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(12.dp)) {
+            Text(
+                systemDisplayName(system), style = MaterialTheme.typography.titleMedium, color = Color.White,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = MaterialTheme.typography.titleMedium.fontSize * 1.1f,
+            )
             val sub = listOfNotNull(meta.maker, meta.year?.toString()).joinToString(" · ")
-            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.75f), maxLines = 1)
         }
     }
 }
@@ -277,7 +292,7 @@ fun PlatformScreen(system: String) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
                 ScreenHeader(
-                    graph.catalog.fullName(system),
+                    systemDisplayName(system),
                     listOfNotNull(
                         gamesLabel(mine.size),
                         mine.count { it.remote }.takeIf { it > 0 }?.let { "$it on RomM" },

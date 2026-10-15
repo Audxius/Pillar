@@ -286,6 +286,8 @@ fun MultiImage(
     fitInset: Dp = 0.dp,
     onColor: ((Color) -> Unit)? = null,
     onAspect: ((Float) -> Unit)? = null,
+    /** Decode at most this many pixels on the long side (for backdrops that get blurred anyway). */
+    decodeSize: Int? = null,
     fallback: @Composable BoxScope.() -> Unit,
 ) {
     var index by remember(sources) { mutableIntStateOf(0) }
@@ -309,7 +311,12 @@ fun MultiImage(
                 Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.35f)))
             }
             AsyncImage(
-                model = ImageRequest.Builder(context).data(src).apply { if (onColor != null) allowHardware(false) }.build(),
+                model = remember(src, decodeSize) {
+                    ImageRequest.Builder(context).data(src).apply {
+                        if (onColor != null) allowHardware(false)
+                        decodeSize?.let { size(it) }
+                    }.build()
+                },
                 contentDescription = null,
                 contentScale = if (fit) ContentScale.Fit else contentScale,
                 alignment = alignment,
@@ -350,10 +357,22 @@ fun systemName(system: String): String {
         ?: graph.catalog.meta(system).short
 }
 
-/** Custom name, else the matched database title (proper spelling and casing), else the file name. */
+/** A console's full everyday name ("Super Nintendo"), unless the user renamed it. */
+@Composable
+fun systemDisplayName(system: String): String {
+    val graph = LocalGraph.current
+    return LocalSettings.current.systemOverrides[system]?.displayName?.takeIf { it.isNotBlank() }
+        ?: graph.catalog.displayName(system)
+}
+
+/**
+ * Custom name, else the name the game was identified by checksum, else the closest thumbnail
+ * name (proper spelling and casing), else the file name.
+ */
 @Composable
 fun gameTitle(game: Game): String {
     LocalUserData.current.customTitle[game.id]?.let { return it }
+    if (game.datName != null) return game.title
     val matched = rememberArt(game)?.matchedName
     return matched?.let { io.github.audxius.pillar.data.LibraryRepository.cleanTitle("$it.x") } ?: game.title
 }
@@ -714,10 +733,12 @@ private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, streng
     ) { current ->
         if (current == null) return@Crossfade
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = strength }) {
+            // A small decode is all a heavily blurred backdrop needs, and keeps focus changes cheap.
             MultiImage(
                 current,
                 Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }
-                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(if (strength < 1f) 48.dp else 28.dp) else Modifier),
+                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(24.dp) else Modifier),
+                decodeSize = 160,
             ) {}
             Box(
                 Modifier.fillMaxSize().background(

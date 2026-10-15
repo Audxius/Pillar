@@ -69,7 +69,8 @@ fun GameLogo(
     val context = LocalContext.current
     var aspect by remember(url) { mutableStateOf<Float?>(null) }
     val request = remember(url) {
-        ImageRequest.Builder(context).data(url).size(Size.ORIGINAL).allowHardware(false).transformations(TrimTransparent()).build()
+        // Capped decode: logos never show larger than this, and trimming a huge bitmap is slow.
+        ImageRequest.Builder(context).data(url).size(900, 900).allowHardware(false).transformations(TrimTransparent()).build()
     }
     // Width x height = area, width / height = aspect, then shrink to fit the box if needed.
     val sized = aspect?.let { a ->
