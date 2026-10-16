@@ -1,5 +1,10 @@
 package io.github.audxius.pillar.data
 
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
+import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -207,4 +212,90 @@ class RommClient(private val http: OkHttpClient, private val settings: () -> App
     }
 
     fun host(): String? = runCatching { base().host }.getOrNull()
+
+    /** A game's soundtrack files (RomM 5.4+); empty when there are none or the server is older. */
+    suspend fun soundtracks(romId: Int): List<RommTrack> = runCatching {
+        PillarJson.decodeFromJsonElement(ListSerializer(RommTrack.serializer()), get { addPathSegments("api/roms/$romId/soundtracks/metadata") })
+    }.getOrDefault(emptyList())
+
+    /** Streaming address for one soundtrack file, plus the auth header it needs. */
+    fun trackUrl(track: RommTrack): Pair<String, String?> =
+        base().newBuilder().addPathSegments("api/roms/${track.fileId}/files/content").addPathSegment(track.fileName).build().toString() to authHeader()
+
+    /** Deletes games from RomM, and their files on the server so a rescan doesn't bring them back. */
+    suspend fun deleteRoms(ids: List<Int>, fromDisk: Boolean) = withContext(Dispatchers.IO) {
+        val body = buildJsonObject {
+            put("roms", JsonArray(ids.map { JsonPrimitive(it) }))
+            put("delete_from_fs", JsonArray((if (fromDisk) ids else emptyList()).map { JsonPrimitive(it) }))
+        }.toString().toRequestBody("application/json".toMediaType())
+        val req = Request.Builder().url(base().newBuilder().addPathSegments("api/roms/delete").build()).post(body)
+            .apply { authHeader()?.let { header("Authorization", it) } }.build()
+        http.newCall(req).execute().use { r ->
+            if (r.code == 401 || r.code == 403) throw RommException("RomM didn't allow deleting (HTTP ${r.code}); the account needs edit rights")
+            if (!r.isSuccessful) throw RommException("RomM couldn't delete it (HTTP ${r.code})")
+        }
+    }
+
+    /**
+     * Uploads a game file to a RomM platform with RomM's chunked upload (RomM 5.x), the same way
+     * its web UI does: start, send 10 MB chunks, complete.
+     */
+    suspend fun upload(platformId: Int, fileName: String, size: Long, open: () -> java.io.InputStream, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
+        val chunk = 10L * 1024 * 1024
+        val total = ((size + chunk - 1) / chunk).toInt()
+        fun call(b: Request.Builder, what: String): String {
+            authHeader()?.let { b.header("Authorization", it) }
+            http.newCall(b.build()).execute().use { r ->
+                if (r.code == 404 || r.code == 405) throw RommException("This RomM server doesn't support uploads from apps (needs RomM 5)")
+                if (r.code == 409) throw RommException("RomM already has a file with that name")
+                if (r.code == 401 || r.code == 403) throw RommException("RomM didn't allow the upload (HTTP ${r.code}); the account needs upload rights")
+                if (!r.isSuccessful) throw RommException("$what failed (HTTP ${r.code})")
+                return r.body?.string().orEmpty()
+            }
+        }
+        val uploadUrl = base().newBuilder().addPathSegments("api/roms/upload").build()
+        val started = call(
+            Request.Builder().url(uploadUrl.newBuilder().addPathSegment("start").build())
+                .header("X-Upload-Platform", platformId.toString())
+                .header("X-Upload-Filename", Uri.encode(fileName))
+                .header("X-Upload-Total-Size", size.toString())
+                .header("X-Upload-Total-Chunks", total.toString())
+                // Like RomM's web app: the header carries the percent-encoded name (headers are
+                // Latin-1 only) and the body the real one, which RomM prefers.
+                .post(buildJsonObject { put("filename", fileName) }.toString().toRequestBody("application/json".toMediaType())),
+            "Starting the upload",
+        )
+        val id = (PillarJson.parseToJsonElement(started) as? JsonObject)?.get("upload_id")?.let { (it as? JsonPrimitive)?.content }
+            ?: throw RommException("RomM didn't start the upload")
+        try {
+            open().use { input ->
+                val buf = ByteArray(chunk.toInt())
+                for (i in 0 until total) {
+                    var n = 0
+                    while (n < buf.size) { val r = input.read(buf, n, buf.size - n); if (r < 0) break; n += r }
+                    call(
+                        Request.Builder().url(uploadUrl.newBuilder().addPathSegment(id).build())
+                            .header("X-Chunk-Index", i.toString())
+                            .put(buf.toRequestBody("application/octet-stream".toMediaType(), 0, n)),
+                        "Uploading",
+                    )
+                    onProgress((i + 1f) / total)
+                }
+            }
+            call(Request.Builder().url(uploadUrl.newBuilder().addPathSegment(id).addPathSegment("complete").build()).post(ByteArray(0).toRequestBody(null)), "Finishing the upload")
+        } catch (e: Exception) {
+            runCatching { call(Request.Builder().url(uploadUrl.newBuilder().addPathSegment(id).addPathSegment("cancel").build()).post(ByteArray(0).toRequestBody(null)), "Cancelling") }
+            throw e
+        }
+    }
 }
+
+@Serializable
+data class RommTrack(
+    @SerialName("file_id") val fileId: Int,
+    @SerialName("file_name") val fileName: String,
+    @SerialName("track_meta") val meta: RommTrackMeta? = null,
+)
+
+@Serializable
+data class RommTrackMeta(val title: String? = null, val track: Int? = null)

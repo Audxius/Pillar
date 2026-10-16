@@ -46,6 +46,10 @@ data class ArtSet(
     val v: Int = 0,
     /** The checksum-identified name this was looked up with; a new identification triggers a fresh lookup. */
     val idName: String? = null,
+    /** SteamGridDB covers in the "No Logo" style, looked up when that setting is on. */
+    val sgdbGridClean: String? = null,
+    val sgdbSquareClean: String? = null,
+    val cleanChecked: Boolean = false,
 )
 
 @Serializable
@@ -134,7 +138,8 @@ class ArtworkRepository(
         // Identified since the last lookup: the official name finds better art.
         val renamed = existing != null && game.datName != null && existing.idName != game.datName
         val needLibretro = (existing?.libretroChecked != true || renamed) && settings.onlineCovers
-        val needSgdb = settings.sgdbKey.isNotBlank() && (existing?.sgdbChecked != true || renamed)
+        val needSgdb = settings.sgdbKey.isNotBlank() &&
+            (existing?.sgdbChecked != true || renamed || (settings.noLogoCovers && existing.cleanChecked != true))
         if (!needLibretro && !needSgdb) return
         val failed = failedAt[game.id]
         if (failed != null && System.currentTimeMillis() - failed < 10 * 60 * 1000) return
@@ -289,7 +294,14 @@ class ArtworkRepository(
             ?: sgdbImages("icons", match.id, emptyMap()).filter { it.width >= 128 }.pick()
         val hero = sgdbImages("heroes", match.id, emptyMap()).pick()
         val logo = sgdbImages("logos", match.id, emptyMap()).pick()
-        return ArtSet(sgdbGrid = grid, sgdbSquare = square, sgdbHero = hero, sgdbLogo = logo, sgdbChecked = true)
+        // Logo-free covers: only fetched when wanted, since they cost two more requests per game.
+        val clean = store.settings.value.noLogoCovers
+        val gridClean = if (clean) sgdbImages("grids", match.id, mapOf("dimensions" to "600x900,342x482,660x930", "styles" to "no_logo")).pick() else null
+        val squareClean = if (clean) sgdbImages("grids", match.id, mapOf("dimensions" to "512x512,1024x1024", "styles" to "no_logo")).pick() else null
+        return ArtSet(
+            sgdbGrid = grid, sgdbSquare = square, sgdbHero = hero, sgdbLogo = logo, sgdbChecked = true,
+            sgdbGridClean = gridClean, sgdbSquareClean = squareClean, cleanChecked = clean,
+        )
     }
 
     /** Checks an API key by running a search. */

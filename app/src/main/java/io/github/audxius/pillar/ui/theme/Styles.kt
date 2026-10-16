@@ -8,6 +8,17 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.draw.drawBehind
+import android.os.Build
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,26 +67,57 @@ data class StyleSpec(
 )
 
 val StyleSpecs = listOf(
-    StyleSpec(UiStyle.GLASS, "Glassmorphism", "Your game's art behind calm, frosted panels", "aurora", ThemeMode.DARK, AppFont.OUTFIT, 24, 0.75f),
+    StyleSpec(UiStyle.GLASS, "Liquid Glass", "Apple-style liquid glass bending your game's art", "aurora", ThemeMode.DARK, AppFont.OUTFIT, 24, 0.75f),
     StyleSpec(UiStyle.AERO, "Frutiger Aero", "Vista sky, glossy glass, light rays and bubbles", "aero", ThemeMode.LIGHT, AppFont.NUNITO, 16, 0f),
     StyleSpec(UiStyle.Y2K, "Y2K", "PS2 and Dreamcast menus: grid floor, cubes, chrome", "y2k", ThemeMode.DARK, AppFont.EXO, 3, 0.3f),
     StyleSpec(UiStyle.XMB, "XMB", "PSP and PS3 menu: a slow light wave over deep color", "xmb", ThemeMode.DARK, AppFont.OUTFIT, 12, 0.18f),
     StyleSpec(UiStyle.WII, "Wii", "Wii menu: white pinstripes, rounded channels, Wii blue", "wii", ThemeMode.LIGHT, AppFont.NUNITO, 22, 0f),
-    StyleSpec(UiStyle.LUNA, "Luna", "Windows XP: Bliss hill, blue window frames, green Start", "luna", ThemeMode.LIGHT, AppFont.SYSTEM, 7, 0f),
+    StyleSpec(UiStyle.POCKET, "Pocket", "The original Game Boy: green LCD, pixel grid, chunky borders", "dmg", ThemeMode.LIGHT, AppFont.PIXEL, 2, 0f),
 )
 
-fun specFor(style: UiStyle) = StyleSpecs.first { it.style == style }
+fun specFor(style: UiStyle) = StyleSpecs.firstOrNull { it.style == style } ?: StyleSpecs.first()
+
+/** The recorded wallpaper that Liquid Glass surfaces refract (set up in PillarRoot). */
+val LocalBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
+
+/**
+ * A Liquid Glass surface: blurs, saturates and bends the wallpaper behind it at the edges, with a
+ * specular rim. It only ever shows the wallpaper, never content scrolling underneath, so it reads
+ * as solid. Android 12 adds the blur and 13 the refraction; older versions get a denser tint.
+ */
+@Composable
+fun Modifier.liquidGlass(shape: Shape, tint: Color, blurRadius: Dp = 14.dp, refraction: Dp = 16.dp): Modifier {
+    val backdrop = LocalBackdrop.current
+    if (backdrop == null || Build.VERSION.SDK_INT < 31) {
+        return this.clip(shape).background(tint.copy(alpha = maxOf(tint.alpha, 0.72f))).border(1.dp, Color.White.copy(alpha = 0.22f), shape)
+    }
+    return this
+        .drawBackdrop(
+            backdrop,
+            shape = { shape },
+            effects = {
+                vibrancy()
+                blur(blurRadius.toPx())
+                lens(refraction.toPx(), refraction.toPx() * 2f)
+            },
+            onDrawSurface = { drawRect(tint) },
+        )
+        .clip(shape)
+}
 
 val LocalStyle = staticCompositionLocalOf { UiStyle.GLASS }
 
 // Y2K colors.
 private val Cyan = Color(0xFF6FD3FF)
 private val Navy = Color(0xFF07152F)
-// Wii and Windows XP colors.
+// Wii colors.
 private val WiiBlue = Color(0xFF34BEED)
 private val WiiRim = Color(0xFFCBD3DA)
-private val XpBlue = Color(0xFF0A49C5)
-private val XpFace = Color(0xFFECE9D8)
+// The original Game Boy's four shades of green, darkest first.
+val Dmg0 = Color(0xFF0F380F)
+val Dmg1 = Color(0xFF306230)
+val Dmg2 = Color(0xFF8BAC0F)
+val Dmg3 = Color(0xFF9BBC0F)
 
 /**
  * Panel surface for the current style: fill, rim and highlight. [solid] puts an opaque base
@@ -87,16 +129,13 @@ fun Modifier.styledSurface(shape: Shape, strong: Boolean = false, solid: Boolean
     val dark = LocalIsDark.current
     fun Modifier.base(c: Color) = if (solid) background(c) else this
     return when (style) {
-        UiStyle.GLASS -> this
-            .clip(shape)
-            .base(if (dark) Color(0xFF17161F) else Color(0xFFF2F2F7))
-            .background(
-                // Dark frosted glass: dims whatever art is behind it so text stays readable.
-                if (dark) Brush.verticalGradient(listOf(Color(0xFF0B0A12).copy(alpha = if (strong) 0.5f else 0.42f), Color(0xFF0B0A12).copy(alpha = 0.55f)))
-                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.82f), Color.White.copy(alpha = 0.66f)))
-            )
-            .then(if (dark) Modifier.background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.03f)))) else Modifier)
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.24f else 0.95f), Color.White.copy(alpha = if (dark) 0.05f else 0.45f))), shape)
+        UiStyle.GLASS, UiStyle.LUNA -> this.liquidGlass(
+            shape,
+            // A dark tint inside the glass keeps text readable over bright art.
+            tint = if (dark) Color(0xFF0B0A12).copy(alpha = if (solid) 0.5f else if (strong) 0.4f else 0.32f)
+            else Color.White.copy(alpha = if (solid) 0.6f else 0.42f),
+            blurRadius = if (solid || strong) 18.dp else 14.dp,
+        )
 
         UiStyle.AERO -> this
             .shadow(if (strong) 10.dp else 6.dp, shape, ambientColor = Color(0xFF0A5FB8), spotColor = Color(0xFF0A5FB8))
@@ -148,20 +187,17 @@ fun Modifier.styledSurface(shape: Shape, strong: Boolean = false, solid: Boolean
             .background(if (dark) Color(0xFF2A3036) else Color.White)
             .border(if (strong) 2.5.dp else 1.5.dp, if (strong) WiiBlue else (if (dark) Color(0xFF46505A) else WiiRim), shape)
 
-        UiStyle.LUNA -> {
-            val win = if (shape == CircleShape) shape else RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp)
+        UiStyle.POCKET -> {
+            // Pixel-stepped corners and a chunky dark outline, like the Game Boy's own menus.
+            val px = if (shape == CircleShape) shape else CutCornerShape(4.dp)
             this
-                .shadow(4.dp, win)
-                .clip(win)
-                .background(if (dark) Color(0xFF26324A) else Color(0xFFF7F6F0))
+                .clip(px)
+                .background(Dmg2)
                 .drawWithContent {
-                    // A slim Luna title bar along the top of every window.
-                    if (shape != CircleShape && size.height > 40.dp.toPx()) {
-                        drawRect(Brush.verticalGradient(listOf(Color(0xFF3D8AF7), XpBlue, Color(0xFF0838A8)), endY = 6.dp.toPx()), size = Size(size.width, 6.dp.toPx()))
-                    }
                     drawContent()
+                    if (strong) drawLine(Dmg3, Offset(6.dp.toPx(), 4.dp.toPx()), Offset(size.width - 6.dp.toPx(), 4.dp.toPx()), 2.dp.toPx())
                 }
-                .border(1.5.dp, if (strong) Color(0xFF0838A8) else Color(0xFF0838A8).copy(alpha = 0.55f), win)
+                .border(3.dp, Dmg0, px)
         }
     }
 }
@@ -186,7 +222,8 @@ fun primaryActionColors(): Pair<Brush, Color> {
     val style = LocalStyle.current
     val primary = androidx.compose.material3.MaterialTheme.colorScheme.primary
     return when (style) {
-        UiStyle.GLASS -> Brush.verticalGradient(listOf(lerp(primary, Color.White, 0.14f), primary)) to primary.onColor()
+        // Liquid Glass draws its own surface (see Modifier.primaryActionFill); this is its tint.
+        UiStyle.GLASS, UiStyle.LUNA -> SolidBrush(primary.copy(alpha = 0.55f)) to Color.White
         UiStyle.AERO -> Brush.verticalGradient(0f to Color(0xFF7FD9FF), 0.45f to Color(0xFF22A8EC), 0.55f to Color(0xFF0874C4), 1f to Color(0xFF1B9BE0)) to Color.White
         // Brushed chrome: bright, a dark band through the middle, bright again.
         // The dark band sits low so the label always reads on bright metal.
@@ -197,15 +234,14 @@ fun primaryActionColors(): Pair<Brush, Color> {
         UiStyle.XMB -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.14f))) to Color.White
         // Wii: a white channel button with Wii-blue lettering.
         UiStyle.WII -> Brush.verticalGradient(listOf(Color.White, Color(0xFFEAF0F4))) to Color(0xFF168FC7)
-        // Windows XP's green Start button.
-        UiStyle.LUNA -> Brush.verticalGradient(0f to Color(0xFF6CC86A), 0.18f to Color(0xFF3FA83C), 0.85f to Color(0xFF2F9A2C), 1f to Color(0xFF237A22)) to Color.White
+        UiStyle.POCKET -> SolidBrush(Dmg1) to Dmg3
     }
 }
 
 /** Extra gloss/rim drawn over the primary action surface. */
 @Composable
 fun Modifier.primaryActionFinish(shape: Shape): Modifier = when (LocalStyle.current) {
-    UiStyle.GLASS -> this.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.08f))), shape)
+    UiStyle.GLASS, UiStyle.LUNA -> this
     UiStyle.AERO -> this
         .drawWithContent {
             drawContent()
@@ -221,12 +257,33 @@ fun Modifier.primaryActionFinish(shape: Shape): Modifier = when (LocalStyle.curr
     UiStyle.Y2K -> this.border(1.5.dp, Brush.verticalGradient(listOf(Color.White, Color(0xFF6E86AA))), shape)
     UiStyle.XMB -> this.border(1.5.dp, Color.White.copy(alpha = 0.8f), shape)
     UiStyle.WII -> this.border(3.dp, WiiBlue, shape)
-    UiStyle.LUNA -> this.border(1.dp, Color(0xFF1C5E1B), shape)
+    UiStyle.POCKET -> this.border(3.dp, Dmg0, shape)
 }
 
-/** Kept for styles that draw outside the button's bounds; none do at the moment. */
+/** Things drawn outside the button's bounds: Pocket's hard pixel shadow. */
 @Composable
-fun Modifier.primaryActionOuter(@Suppress("UNUSED_PARAMETER") shape: Shape): Modifier = this
+fun Modifier.primaryActionOuter(shape: Shape): Modifier =
+    if (LocalStyle.current == UiStyle.POCKET) this.drawBehind {
+        val o = shape.createOutline(size, layoutDirection, this)
+        translate(4.dp.toPx(), 4.dp.toPx()) { drawOutline(o, Dmg0) }
+    } else this
+
+/** The Play button's face: real liquid glass for Liquid Glass, the style's brush otherwise. */
+@Composable
+fun Modifier.primaryActionFill(shape: Shape, brush: Brush): Modifier = when (LocalStyle.current) {
+    UiStyle.GLASS, UiStyle.LUNA -> this.liquidGlass(shape, androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), blurRadius = 10.dp, refraction = 20.dp)
+    else -> this.clip(shape).background(brush)
+}
+
+/** Chip/pill surface: liquid glass for Liquid Glass, flat colors for the rest. */
+@Composable
+fun Modifier.chipSurface(shape: Shape, selected: Boolean): Modifier {
+    val (bg, _, rim) = chipColors(selected)
+    val style = LocalStyle.current
+    return if ((style == UiStyle.GLASS || style == UiStyle.LUNA) && !selected) {
+        this.liquidGlass(shape, Color(0xFF0B0A12).copy(alpha = if (LocalIsDark.current) 0.3f else 0.08f), blurRadius = 8.dp, refraction = 8.dp)
+    } else this.clip(shape).background(bg).border(if (style == UiStyle.POCKET) 2.dp else 1.dp, rim, shape)
+}
 
 /** Chip/pill colors: (background, content, border). */
 @Composable
@@ -234,7 +291,7 @@ fun chipColors(selected: Boolean): Triple<Brush, Color, Brush> {
     val style = LocalStyle.current
     val dark = LocalIsDark.current
     return when (style) {
-        UiStyle.GLASS -> if (selected) Triple(SolidBrush(Color.White.copy(alpha = if (dark) 0.92f else 1f)), Color(0xFF15131C), SolidBrush(Color.White))
+        UiStyle.GLASS, UiStyle.LUNA -> if (selected) Triple(SolidBrush(Color.White.copy(alpha = if (dark) 0.92f else 1f)), Color(0xFF15131C), SolidBrush(Color.White))
         else Triple(SolidBrush(Color.White.copy(alpha = if (dark) 0.08f else 0.55f)), if (dark) Color.White else Color(0xFF15131C), SolidBrush(Color.White.copy(alpha = if (dark) 0.16f else 0.85f)))
         UiStyle.AERO -> if (selected) Triple(Brush.verticalGradient(0f to Color(0xFFB8F2FF), 0.5f to Color(0xFF39C3F5), 0.51f to Color(0xFF0B86D6), 1f to Color(0xFF29B4F0)), Color.White, SolidBrush(Color(0xFF05578F)))
         else Triple(Brush.verticalGradient(0f to Color.White, 0.5f to Color(0xFFF4FAFF), 0.51f to Color(0xFFE2F1FC), 1f to Color(0xFFEFF8FF)), Color(0xFF0D3B66), SolidBrush(Color(0xFF8CC7EE)))
@@ -246,8 +303,8 @@ fun chipColors(selected: Boolean): Triple<Brush, Color, Brush> {
         UiStyle.WII -> if (selected) Triple(SolidBrush(WiiBlue), Color.White, SolidBrush(Color(0xFF1A9FD6)))
         else if (dark) Triple(SolidBrush(Color(0xFF2A3036)), Color.White, SolidBrush(Color(0xFF46505A)))
         else Triple(SolidBrush(Color.White), Color(0xFF4A5560), SolidBrush(WiiRim))
-        UiStyle.LUNA -> if (selected) Triple(Brush.verticalGradient(listOf(Color(0xFF4C93FA), Color(0xFF1C5FD7))), Color.White, SolidBrush(Color(0xFF0838A8)))
-        else Triple(Brush.verticalGradient(listOf(Color.White, XpFace)), Color.Black, SolidBrush(Color(0xFF003C74).copy(alpha = 0.7f)))
+        UiStyle.POCKET -> if (selected) Triple(SolidBrush(Dmg0), Dmg3, SolidBrush(Dmg0))
+        else Triple(SolidBrush(Dmg2), Dmg0, SolidBrush(Dmg1))
     }
 }
 
@@ -258,12 +315,12 @@ fun SolidBrush(c: Color): Brush = Brush.linearGradient(listOf(c, c))
 @Composable
 fun StyleBackdrop(primary: Color, secondary: Color, tertiary: Color, animate: Boolean) {
     when (LocalStyle.current) {
-        UiStyle.GLASS -> GlassMesh(primary, secondary, tertiary, animate)
+        UiStyle.GLASS, UiStyle.LUNA -> GlassMesh(primary, secondary, tertiary, animate)
         UiStyle.AERO -> AeroSky(animate)
         UiStyle.Y2K -> ConsoleMenu(animate)
         UiStyle.XMB -> XmbWave(primary, animate)
         UiStyle.WII -> WiiStripes()
-        UiStyle.LUNA -> Bliss(animate)
+        UiStyle.POCKET -> PocketLcd()
     }
 }
 
@@ -493,39 +550,22 @@ private fun WiiStripes() {
     }
 }
 
-// ---- Windows XP Luna ---------------------------------------------------------------------------
+// ---- Pocket (original Game Boy) ----------------------------------------------------------------
 
 @Composable
-private fun Bliss(animate: Boolean) {
-    val dark = LocalIsDark.current
-    val drift = drift(animate, 60000, "bliss", linear = true)
+private fun PocketLcd() {
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height
-        drawRect(
-            if (dark) Brush.verticalGradient(listOf(Color(0xFF0A1A3A), Color(0xFF1C3D72), Color(0xFF365E8F)))
-            else Brush.verticalGradient(0f to Color(0xFF6FAEF2), 0.4f to Color(0xFF8EC2F5), 0.72f to Color(0xFFC6E2FA), 1f to Color(0xFFE2F0FC))
-        )
-        // Soft drifting clouds.
-        listOf(floatArrayOf(0.2f, 0.16f, 0.32f), floatArrayOf(0.75f, 0.1f, 0.26f), floatArrayOf(0.55f, 0.3f, 0.38f), floatArrayOf(0.05f, 0.4f, 0.22f)).forEachIndexed { i, (cx, cy, r) ->
-            val x = ((cx + drift * (0.25f + i * 0.05f)) % 1.3f - 0.15f) * w
-            val c = Offset(x, h * cy)
-            drawOval(
-                Brush.radialGradient(listOf(Color.White.copy(alpha = if (dark) 0.12f else 0.75f), Color.White.copy(alpha = 0f)), center = c, radius = w * r),
-                topLeft = Offset(c.x - w * r, c.y - w * r * 0.4f), size = Size(w * r * 2, w * r * 0.8f),
-            )
-        }
-        // The rolling green hill.
-        val top = h * 0.66f
-        val hill = Path().apply {
-            moveTo(0f, h); lineTo(0f, top + h * 0.06f)
-            cubicTo(w * 0.25f, top - h * 0.05f, w * 0.6f, top - h * 0.02f, w, top + h * 0.08f)
-            lineTo(w, h); close()
-        }
-        drawPath(hill, Brush.verticalGradient(
-            if (dark) listOf(Color(0xFF2E5A1E), Color(0xFF1A3A12)) else listOf(Color(0xFF7CC845), Color(0xFF4E9E2A), Color(0xFF2F7418)),
-            startY = top - h * 0.05f, endY = h,
-        ))
-        drawPath(hill, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.06f else 0.25f), Color.White.copy(alpha = 0f)), startY = top - h * 0.05f, endY = top + h * 0.06f))
+        drawRect(Brush.verticalGradient(listOf(Dmg3, Color(0xFF94B50F))))
+        // The LCD's pixel grid.
+        val cell = 4.dp.toPx()
+        val grid = Dmg2.copy(alpha = 0.5f)
+        var x = 0f
+        while (x < w) { drawLine(grid, Offset(x, 0f), Offset(x, h), 1f); x += cell }
+        var y = 0f
+        while (y < h) { drawLine(grid, Offset(0f, y), Offset(w, y), 1f); y += cell }
+        // Darker toward the edges, like an unlit screen.
+        drawRect(Brush.radialGradient(listOf(Color.Transparent, Dmg1.copy(alpha = 0.22f)), center = Offset(w / 2, h * 0.45f), radius = maxOf(w, h) * 0.75f))
     }
 }
 

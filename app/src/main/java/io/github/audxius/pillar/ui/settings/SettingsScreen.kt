@@ -238,10 +238,6 @@ private fun AppearancePage() {
             }
         }
         }
-        SettingSwitch(
-            "Theme music", "An original background loop for each style, only while Pillar is on screen. Also on the home screen's music note.",
-            s.themeMusic,
-        ) { v -> update { it.copy(themeMusic = v) } }
     }
 
     SettingsGroup("Theme") {
@@ -395,6 +391,25 @@ private fun HomePage() {
             description = "How the carousel home scrolls through your games.",
         ) { v -> update { it.copy(homeVertical = v) } }
     }
+    SettingsGroup("Game music") {
+        val pickMusic = rememberFolderPicker { uri -> update { it.copy(musicDir = uri.toString()) } }
+        SettingSwitch(
+            "Play a game's music",
+            "When a game stays in focus on the home screen, its main theme plays. Also on the home screen's music note.",
+            s.gameMusic,
+        ) { v -> update { it.copy(gameMusic = v) } }
+        SettingRow(
+            "Music folder",
+            s.musicDir?.let { Saf.describeTree(Uri.parse(it)) }
+                ?: "Optional: audio files named after games (\"Super Metroid.mp3\"), or a folder per game with its tracks",
+            Icons.Rounded.Folder,
+        ) { pickMusic() }
+        Text(
+            "Pillar also plays a game's soundtrack from RomM when you've added one there (RomM 5.4 or newer). It doesn't download music from anywhere else.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+    }
     SettingsGroup("Greeting") {
         SettingField("Your name", name, { name = it; update { st -> st.copy(greetingName = it.trim()) } }, placeholder = "Shown in the greeting")
         SettingSwitch("24-hour clock", null, s.clock24h) { v -> update { it.copy(clock24h = v) } }
@@ -545,6 +560,11 @@ private fun LibraryPage() {
             }) { Text("Save & test") }
         }
         sgdbStatus?.let { (m, ok) -> StatusLine(m, ok) }
+        SettingSwitch(
+            "Covers without logos",
+            "Pillar already shows each game's logo, so prefer SteamGridDB covers that leave it out. Games without one keep their normal cover.",
+            s.noLogoCovers,
+        ) { v -> update { it.copy(noLogoCovers = v) } }
         SettingRow("Refresh all artwork", "Look every game up again", onClick = { graph.artwork.reset() })
     }
 

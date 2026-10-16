@@ -62,11 +62,30 @@ class AppGraph(val context: Context) {
     val identifier = GameIdentifier(context, http, catalog, scope)
     /** True while one of Pillar's screens is visible (set by MainActivity). */
     val foreground = MutableStateFlow(false)
-    val music = ThemeMusicPlayer(scope)
+
     val rommRepo = RommRepository(context, romm, store, catalog, scope)
     val downloads = Downloads(context, http, romm, catalog, store, library)
     val artwork = ArtworkRepository(context, http, catalog, store, scope) { ra.hashTitles.value }
     val saveSync = SaveSync(context, http, store, scope)
+    val music = GameMusic(context, romm, store, scope)
+
+    /**
+     * Local game id -> RomM id: games downloaded from RomM, plus local copies of a RomM game
+     * (same system and file name), so their RomM info, soundtrack and delete work too.
+     */
+    val rommLinks: StateFlow<Map<String, Int>> = kotlinx.coroutines.flow.combine(library.games, rommRepo.games, store.userData) { local, roms, user ->
+        val byKey = HashMap<String, Int>()
+        for (r in roms) {
+            val sys = catalog.resolveRommPlatform(r.platformSlug, r.platformFsSlug) ?: continue
+            byKey.putIfAbsent("$sys/${r.fsName.lowercase()}", r.id)
+            byKey.putIfAbsent("$sys/${(r.fsNameNoExt ?: r.fsName.substringBeforeLast('.')).lowercase()}", r.id)
+        }
+        local.mapNotNull { g ->
+            (user.rommIds[g.id] ?: byKey["${g.system}/${g.fileName.lowercase()}"] ?: byKey["${g.system}/${g.baseName.lowercase()}"])?.let { g.id to it }
+        }.toMap()
+    }.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyMap())
+
+    fun rommIdFor(game: Game): Int? = game.rommId ?: rommLinks.value[game.id]
 
     /**
      * The one library: games on this device plus RomM games that aren't downloaded yet. A RomM game
@@ -118,6 +137,54 @@ class AppGraph(val context: Context) {
         return library.games.value.firstOrNull { user.rommIds[it.id] == rommId }
     }
 
+    /**
+     * Deletes a game from this device and/or RomM (and the file on the RomM server, so a rescan
+     * doesn't bring it back). Only ever called after the user confirms. Returns a problem to show,
+     * or null when everything went through.
+     */
+    suspend fun deleteGame(game: Game, fromDevice: Boolean, fromRomm: Boolean): String? = withContext(Dispatchers.IO) {
+        val problems = ArrayList<String>()
+        if (fromDevice && !game.remote) {
+            val tree = android.net.Uri.parse(game.treeUri)
+            val resolver = context.contentResolver
+            // Disc images: also remove the track or disc files a .cue / .m3u lists next to it.
+            val parent = game.id.substringBeforeLast('/', "")
+            val ext = game.fileName.substringAfterLast('.', "").lowercase()
+            val companions = if (parent.isNotEmpty() && (ext == "cue" || ext == "m3u")) {
+                val text = runCatching { resolver.openInputStream(android.net.Uri.parse(game.docUri))?.bufferedReader()?.readText() }.getOrNull().orEmpty()
+                val names = if (ext == "cue") Regex("FILE\\s+\"([^\"]+)\"", RegexOption.IGNORE_CASE).findAll(text).map { it.groupValues[1] }.toList()
+                else text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+                names.mapNotNull { n -> Saf.findChild(resolver, tree, parent, n.substringAfterLast('/')) }
+            } else emptyList()
+            companions.forEach { Saf.delete(resolver, Saf.docUri(tree, it.docId)) }
+            if (!Saf.delete(resolver, android.net.Uri.parse(game.docUri))) problems += "Couldn't delete the file on this device"
+            else library.rescanSystem(game.system)
+        }
+        val rommId = rommIdFor(game)
+        if (fromRomm && rommId != null) {
+            runCatching { romm.deleteRoms(listOf(rommId), fromDisk = true) }.onFailure { problems += (it.message ?: "RomM couldn't delete it") }
+            rommRepo.refresh(force = true)
+        }
+        store.updateUser { u ->
+            u.copy(
+                rommIds = if (fromRomm) u.rommIds - game.id else u.rommIds,
+                favorites = if (fromDevice && (fromRomm || rommId == null)) u.favorites - game.id else u.favorites,
+            )
+        }
+        problems.joinToString(". ").ifBlank { null }
+    }
+
+    /** Uploads a local game to the matching platform on RomM. */
+    suspend fun uploadToRomm(game: Game, onProgress: (Float) -> Unit) {
+        val platforms = (rommRepo.platforms.value as? Loadable.Ready)?.value ?: romm.platforms()
+        val platform = platforms.firstOrNull { catalog.resolveRommPlatform(it.slug, it.fsSlug) == game.system }
+            ?: throw RommException("Your RomM server has no ${catalog.displayName(game.system)} platform yet. Add it in RomM first.")
+        romm.upload(platform.id, game.fileName, game.size, {
+            context.contentResolver.openInputStream(android.net.Uri.parse(game.docUri)) ?: throw java.io.IOException("Can't read ${game.fileName}")
+        }, onProgress)
+        rommRepo.refresh(force = true)
+    }
+
     /** Starts a RomM download and launches the game as soon as it lands. */
     fun downloadAndPlay(game: Game) {
         val rom = game.rommId?.let { rommRepo.rom(it) } ?: return
@@ -149,12 +216,13 @@ class AppGraph(val context: Context) {
     init {
         identifyGames()
         scope.launch { saveSync.coreFolders.collect { launcher.usedCores = it } }
-        // Theme music only while Pillar is on screen, never over a game.
+        // Game music never plays over a game or with the switch off.
         scope.launch {
-            combine(store.settings.map { it.themeMusic to it.uiStyle }.distinctUntilChanged(), foreground) { (on, style), fg -> if (on && fg) style else null }
-                .distinctUntilChanged()
-                .collect { music.want(it) }
+            combine(foreground, store.settings.map { it.gameMusic }.distinctUntilChanged()) { fg, on -> fg && on }
+                .collect { if (!it) launch(Dispatchers.Main) { music.stop() } }
         }
+        scope.launch { store.settings.map { it.musicDir }.distinctUntilChanged().collect { music.rescan() } }
+
         matchRetroAchievements()
         scope.launch {
             downloads.states.collect { states ->
@@ -256,7 +324,7 @@ class RaRepository(
         if (!settings.raConfigured || !settings.raMatchTitles) return null
         val console = catalog.meta(game.system).raConsole ?: return null
         val index = runCatching { client.gameIndex(console) }.getOrNull() ?: return null
-        val id = withContext(Dispatchers.IO) { match(game, console, index) }.also { hashes.save(); saveTitles() } ?: return null
+        val id = withContext(Dispatchers.IO) { match(game, console, index) }.also { hashes.save(); saveTitles(); recordMatch(game.id, it != null) } ?: return null
         save(mapOf(game.id to id))
         return id
     }
@@ -281,6 +349,20 @@ class RaRepository(
     )
     /** Game id -> RetroAchievements title, for games identified by ROM hash. */
     val hashTitles: StateFlow<Map<String, String>> = _hashTitles.asStateFlow()
+
+    private val noMatchFile = File(context.filesDir, "ra-nomatch.txt")
+    private val _noMatch = MutableStateFlow(runCatching { noMatchFile.readLines().filter { it.isNotBlank() }.toSet() }.getOrDefault(emptySet()))
+    /** Games looked up on RetroAchievements without a match: shown as "No achievements". */
+    val noAchievements: StateFlow<Set<String>> = _noMatch.asStateFlow()
+
+    private fun recordMatch(gameId: String, found: Boolean) {
+        val now = _noMatch.value
+        val next = if (found) now - gameId else now + gameId
+        if (next != now) {
+            _noMatch.value = next
+            runCatching { noMatchFile.writeText(next.joinToString("\n")) }
+        }
+    }
 
     private fun saveTitles() {
         runCatching { titlesFile.writeText(PillarJson.encodeToString(titlesSerializer, _hashTitles.value)) }
@@ -331,7 +413,9 @@ class RaRepository(
                 for (game in list) {
                     val s = store.settings.value
                     if (!s.raConfigured || !s.raMatchTitles) return
-                    match(game, console, index)?.let { found[game.id] = it }
+                    val m = match(game, console, index)
+                    if (m != null) found[game.id] = m
+                    if (game.id !in known) recordMatch(game.id, m != null)
                     tried += game.id
                     if (found.size >= 25) { save(found.toMap()); found.clear(); hashes.save() }
                 }

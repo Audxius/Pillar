@@ -74,6 +74,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.audxius.pillar.data.AppGraph
+import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.audxius.pillar.data.EmuCommand
 import io.github.audxius.pillar.data.Game
 import io.github.audxius.pillar.data.LaunchResult
@@ -154,9 +155,11 @@ fun PillarRoot(graph: AppGraph) {
             }
         }
 
-        CompositionLocalProvider(LocalNav provides nav, LocalSnackbar provides snackbar) {
+        // The wallpaper is recorded once so Liquid Glass surfaces can refract it.
+        val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+        CompositionLocalProvider(LocalNav provides nav, LocalSnackbar provides snackbar, io.github.audxius.pillar.ui.theme.LocalBackdrop provides backdrop) {
             Box(Modifier.fillMaxSize()) {
-                PillarBackground()
+                PillarBackground(Modifier.layerBackdrop(backdrop))
                 SharedTransitionLayout {
                     CompositionLocalProvider(LocalSharedScope provides this) {
                         PillarNavHost(nav, start = startRoute)
@@ -268,8 +271,11 @@ private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
         Tabs.forEach { tab ->
             val selected = current == tab.route
             // Each tab has its own color, like a handheld's home-menu dock.
-            val bubble by animateColorAsState(if (selected) tab.color else tab.color.copy(alpha = 0.14f), label = "tabBubble")
-            val glyph by animateColorAsState(if (selected) Color.White else tab.color, label = "tabGlyph")
+            // Pocket keeps to the Game Boy's four greens.
+            val pocket = io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.POCKET
+            val tabColor = if (pocket) io.github.audxius.pillar.ui.theme.Dmg0 else tab.color
+            val bubble by animateColorAsState(if (selected) tabColor else tabColor.copy(alpha = 0.14f), label = "tabBubble")
+            val glyph by animateColorAsState(if (selected) (if (pocket) io.github.audxius.pillar.ui.theme.Dmg3 else Color.White) else tabColor, label = "tabGlyph")
             Column(
                 Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
                     .tappable(RoundedCornerShape(20.dp)) { onSelect(tab.route) }

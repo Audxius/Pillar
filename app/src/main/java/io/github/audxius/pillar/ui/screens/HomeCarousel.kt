@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.MusicOff
@@ -55,6 +56,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -88,6 +92,7 @@ import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.chipColors
+import io.github.audxius.pillar.ui.theme.chipSurface
 import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -148,6 +153,11 @@ fun HomeCarouselScreen() {
     }
     // Look up achievement support for whatever is in focus (cached, so cheap after the first time).
     LaunchedEffect(selected.id) { if (!selected.remote) runCatching { graph.ra.idFor(selected, graph.catalog) } }
+    // The focused game's own music, if you have it (RomM soundtrack or the music folder).
+    val musicOn = LocalSettings.current.gameMusic
+    val fg by graph.foreground.collectAsStateWithLifecycle()
+    LaunchedEffect(selected.id, musicOn, fg) { if (musicOn && fg) graph.music.focus(selected, graph.rommIdFor(selected)) else graph.music.stop() }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { graph.music.stop() } }
 
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
         val itemHeight = (maxHeight * 0.3f).coerceIn(130.dp, 270.dp)
@@ -186,18 +196,18 @@ fun HomeCarouselScreen() {
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
 }
 
-/** The little music note that turns the style's theme music on and off. */
+/** The little music note that turns game music (the focused game's own theme) on and off. */
 @Composable
 private fun MusicToggle(modifier: Modifier) {
     val graph = LocalGraph.current
-    val on = LocalSettings.current.themeMusic
+    val on = LocalSettings.current.gameMusic
     val scope = rememberCoroutineScope()
     StyledIconButton(
         if (on) Icons.Rounded.MusicNote else Icons.Rounded.MusicOff,
-        if (on) "Turn theme music off" else "Turn theme music on",
+        if (on) "Turn game music off" else "Turn game music on",
         modifier, size = 40.dp,
         tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-    ) { scope.launch { graph.store.update { it.copy(themeMusic = !it.themeMusic) } } }
+    ) { scope.launch { graph.store.update { it.copy(gameMusic = !it.gameMusic) } } }
 }
 
 /** Pill chip drawn in the current style. */
@@ -205,7 +215,7 @@ private fun MusicToggle(modifier: Modifier) {
 fun StyledChip(label: String, active: Boolean, dot: Color? = null, onClick: () -> Unit) {
     val (bg, fg, rim) = chipColors(active)
     Row(
-        Modifier.clip(RoundedCornerShape(50)).background(bg).border(1.dp, rim, RoundedCornerShape(50))
+        Modifier.chipSurface(RoundedCornerShape(50), active)
             .tappable(RoundedCornerShape(50), onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -233,10 +243,17 @@ fun StyledIconButton(
     ) { Icon(icon, label, tint = tint, modifier = Modifier.size(size * 0.46f)) }
 }
 
-/** System, last played, achievements and RomM status as a centered row of pills. */
+/**
+ * System and last played as a centered row of pills, plus warnings only when something's missing:
+ * no RetroAchievements set for the game, or a local game that isn't on your RomM server.
+ */
 @Composable
 fun GameMetaPills(g: Game, modifier: Modifier = Modifier, extra: List<String> = emptyList()) {
+    val graph = LocalGraph.current
     val user = LocalUserData.current
+    val settings = LocalSettings.current
+    val noAch by graph.ra.noAchievements.collectAsStateWithLifecycle()
+    val links by graph.rommLinks.collectAsStateWithLifecycle()
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -245,8 +262,8 @@ fun GameMetaPills(g: Game, modifier: Modifier = Modifier, extra: List<String> = 
         MetaPill(systemName(g.system), systemColor(g.system), dotted = true)
         val last = user.lastPlayed[g.id] ?: 0L
         MetaPill(if (last > 0) timeAgo(last) else "Not played yet", null, Icons.Rounded.Schedule)
-        if (user.raIds[g.id] != null) MetaPill("Achievements", TrophyGold, Icons.Rounded.EmojiEvents)
-        if (g.remote) MetaPill("On RomM", null, Icons.Rounded.CloudDownload)
+        if (settings.raConfigured && user.raIds[g.id] == null && g.id in noAch) MetaPill("No achievements", null, Icons.Rounded.EmojiEvents)
+        if (settings.rommConfigured && !g.remote && g.id !in links) MetaPill("Not on RomM", null, Icons.Rounded.CloudOff)
         extra.forEach { MetaPill(it, null) }
     }
 }
@@ -256,9 +273,8 @@ fun GameMetaPills(g: Game, modifier: Modifier = Modifier, extra: List<String> = 
 fun MetaPill(text: String, color: Color?, icon: ImageVector? = null, dotted: Boolean = false) {
     val (bg, fg, rim) = chipColors(false)
     Row(
-        Modifier.height(32.dp).clip(RoundedCornerShape(50)).background(bg)
+        Modifier.height(32.dp).chipSurface(RoundedCornerShape(50), false)
             .then(if (color != null && dotted) Modifier.background(color.copy(alpha = 0.16f)) else Modifier)
-            .border(1.dp, rim, RoundedCornerShape(50))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -333,15 +349,19 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
     val corner = LocalCorner.current
     // One scroll at a time: a new tap replaces a scroll that's still running.
     var tapJob by remember { mutableStateOf<Job?>(null) }
+    // Wii: a WiiFlow-style 3D cover flow with reflections on a glossy floor.
+    val coverFlow = io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.WII
+    val floor = MaterialTheme.colorScheme.background
+    val coverH = if (coverFlow) itemHeight * 0.8f else itemHeight
     BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp)) {
         // Side padding that lets the first and last cover sit in the middle.
-        val side = ((maxWidth - itemHeight * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
+        val side = ((maxWidth - coverH * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
         LazyRow(
             state = state,
             flingBehavior = rememberSnapFlingBehavior(state),
             contentPadding = PaddingValues(horizontal = side),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (coverFlow) 4.dp else 14.dp),
+            verticalAlignment = if (coverFlow) Alignment.Top else Alignment.CenterVertically,
             modifier = Modifier.fillMaxHeight(),
         ) {
             itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
@@ -351,10 +371,43 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                 val ratio = if (settings.coverShape == CoverShape.NATURAL) {
                     (io.github.audxius.pillar.ui.components.rememberAspect(g) ?: graph.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.8f)
                 } else settings.coverShape.ratio()
+                val reflection = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
                 GameCover(
                     g,
-                    Modifier.height(itemHeight).width(itemHeight * ratio)
-                        .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (focused) 1f else 0.7f }
+                    Modifier.height(coverH).width(coverH * ratio)
+                        .then(
+                            if (coverFlow) Modifier
+                                .padding(top = itemHeight * 0.06f)
+                                // Nearer the middle draws on top, so neighbours tuck behind the centre cover.
+                                .zIndex(-abs(index - selectedIndex).toFloat())
+                                .graphicsLayer {
+                                    // How far this cover is from the centre, in cover widths.
+                                    val info = state.layoutInfo
+                                    val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+                                    val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                                    val d = item?.let { (it.offset + it.size / 2f - center) / it.size } ?: 0f
+                                    val c = d.coerceIn(-1.6f, 1.6f)
+                                    rotationY = (-c * 55f).coerceIn(-62f, 62f)
+                                    translationX = -kotlin.math.sign(c) * minOf(abs(c), 1f) * size.width * 0.3f
+                                    val sc = 1.12f - minOf(abs(c), 1f) * 0.22f
+                                    scaleX = sc; scaleY = sc
+                                    cameraDistance = 14f * density
+                                }
+                                .drawWithContent {
+                                    // The cover, then its mirror image fading into the floor below it.
+                                    val layer = reflection!!
+                                    layer.record { this@drawWithContent.drawContent() }
+                                    drawLayer(layer)
+                                    withTransform({ scale(1f, -1f, pivot = androidx.compose.ui.geometry.Offset(0f, size.height)) }) {
+                                        drawLayer(layer)
+                                    }
+                                    drawRect(
+                                        Brush.verticalGradient(0f to floor.copy(alpha = 0.55f), 0.45f to floor, startY = size.height, endY = size.height * 2),
+                                        topLeft = androidx.compose.ui.geometry.Offset(0f, size.height), size = size,
+                                    )
+                                }
+                            else Modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (focused) 1f else 0.7f }
+                        )
                         .tappable(RoundedCornerShape(corner * 0.7f), onLongClick = { onLongPress(g) }) {
                             // Tapping the centered game opens its page; tapping another one brings it to the center.
                             if (focused) nav.navigate(Routes.game(g.id, "home"))

@@ -107,6 +107,7 @@ import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.styledSurface
 import io.github.audxius.pillar.ui.theme.primaryActionFinish
 import io.github.audxius.pillar.ui.theme.primaryActionOuter
+import io.github.audxius.pillar.ui.theme.primaryActionFill
 import io.github.audxius.pillar.ui.theme.StyleBackdrop
 import io.github.audxius.pillar.ui.theme.rememberFeedback
 import kotlinx.coroutines.Dispatchers
@@ -423,7 +424,7 @@ fun GameCover(
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val cover = rememberCoverSources(game)
-    val squareArt = if (preferSquare) rememberArt(game)?.sgdbSquare else null
+    val squareArt = if (preferSquare) rememberArt(game)?.let { a -> (if (settings.noLogoCovers) a.sgdbSquareClean else null) ?: a.sgdbSquare } else null
     val sources = remember(cover, squareArt) { listOfNotNull(squareArt) + cover }
     val title = gameTitle(game)
     val natural = ratio == null && settings.coverShape == CoverShape.NATURAL
@@ -702,7 +703,7 @@ fun rememberCoverSources(game: Game): List<String> {
     val user = LocalUserData.current
     val art = rememberArt(game)
     val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
-    return remember(game.id, art, settings.coverStyle, settings.onlineCovers, settings.onlineArt, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
+    return remember(game.id, art, settings.coverStyle, settings.onlineCovers, settings.onlineArt, settings.noLogoCovers, settings.coverShape, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
         graph.library.coverCandidates(game, settings, user, art)
     }
 }
@@ -789,8 +790,7 @@ fun PrimaryAction(
         modifier
             .primaryActionOuter(shape)
             .shadow(14.dp, shape, ambientColor = primary, spotColor = primary)
-            .clip(shape)
-            .background(brush)
+            .primaryActionFill(shape, brush)
             .then(if (onMenu == null) Modifier.tappable(shape, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {

@@ -252,6 +252,8 @@ class LibraryRepository(
      */
     fun coverCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
         user.customCover[game.id]?.let(::add)
+        // Logo-free covers first when wanted: square ones for square tiles, portrait otherwise.
+        if (settings.noLogoCovers) (if (settings.coverShape == CoverShape.SQUARE) art?.sgdbSquareClean else art?.sgdbGridClean)?.let(::add)
         game.remoteCover?.let(::add)
         when (settings.coverStyle) {
             CoverStyle.SQUARE -> art?.sgdbSquare?.let(::add)

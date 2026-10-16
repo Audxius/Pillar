@@ -185,7 +185,7 @@ private fun PlatformCard(system: String, games: List<Game>, onClick: () -> Unit)
     val graph = LocalGraph.current
     val user = LocalUserData.current
     val meta = graph.catalog.meta(system)
-    val color = systemColor(system)
+    val color = if (io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.POCKET) io.github.audxius.pillar.ui.theme.Dmg1 else systemColor(system)
     val corner = LocalCorner.current
     val shape = RoundedCornerShape(corner * 0.8f)
     // The games you played last stand in for the console; otherwise the first few alphabetically.

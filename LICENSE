@@ -27,6 +27,8 @@ Bundled third-party material:
 - app/src/main/assets/esde/es_systems.xml and es_find_rules.xml come from
   ES-DE (https://gitlab.com/es-de/emulationstation-de) under the MIT License;
   see app/src/main/assets/esde/LICENSE-ES-DE.txt.
+- The Backdrop library (io.github.kyant0:backdrop, https://github.com/Kyant0/AndroidLiquidGlass)
+  is used under the Apache License 2.0.
 - Fonts in app/src/main/res/font (Nunito, Outfit, Space Grotesk, Exo 2,
   Press Start 2P)
   are licensed under the SIL Open Font License 1.1; see

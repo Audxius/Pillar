@@ -24,9 +24,9 @@ progress. Almost everything about how it looks can be changed.
 <p align="center">
   <img src="docs/style-xmb-home.webp" width="23%" alt="XMB style" />
   <img src="docs/style-wii-home.webp" width="23%" alt="Wii style" />
-  <img src="docs/style-luna-home.webp" width="23%" alt="Luna style" />
+  <img src="docs/style-pocket-home.webp" width="23%" alt="Pocket style" />
 </p>
-<p align="center"><sub>Glassmorphism (top); Frutiger Aero and Y2K, the Y2K one with the vertical game list; XMB, Wii and Luna</sub></p>
+<p align="center"><sub>Glassmorphism (top); Frutiger Aero and Y2K, the Y2K one with the vertical game list; XMB, Wii (with its cover flow) and Pocket</sub></p>
 
 ## Install
 
@@ -50,12 +50,13 @@ Android 8.0 or newer.
   pick one to browse its games with search, sort, filters and its default emulator.
 - **Knows your games.** Cartridge-era ROMs are identified by checksum against the No-Intro
   databases, so a file called `sonic3k.md` still gets its real name, box art and logo.
-- **Six looks.** Glassmorphism (default: your game's art behind frosted panels); Frutiger Aero
-  (Vista sky, light rays, bubbles, glossy glass and aqua buttons); Y2K (PS2 and Dreamcast menus:
-  a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons); XMB (the PSP/PS3
-  wave); Wii (white pinstripes and Wii-blue rims); and Luna (Windows XP's Bliss hill, blue window
-  frames and a green Start-style Play button). Each has its own backdrop, panels, buttons and dock,
-  and its own original background music (synthesized on the device; toggle it with the music note).
+- **Six looks.** Liquid Glass (default: Apple-style glass that refracts your game's art);
+  Frutiger Aero (Vista sky, light rays, bubbles, glossy glass and aqua buttons); Y2K (PS2 and
+  Dreamcast menus: a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons);
+  XMB (the PSP/PS3 wave); Wii (white pinstripes, Wii-blue rims and a WiiFlow-style 3D cover
+  flow); and Pocket (the original Game Boy's green LCD, pixel grid and chunky borders).
+- **Game music.** Stay on a game and its main theme plays: from its soundtrack on RomM (5.4+)
+  or a folder of music files named after your games. Toggle it with the music note.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -68,7 +69,8 @@ Android 8.0 or newer.
 - **Artwork.** Box art from the libretro thumbnail server with fuzzy name matching (so
   "Final Fantasy 3.sfc" still finds its cover), your RomM covers, ES-DE's `downloaded_media`
   folder, or [SteamGridDB](https://www.steamgriddb.com) with a free API key (covers, square icons,
-  wide backgrounds, logos). Covers are never cropped unless you want them to be.
+  wide backgrounds, logos, and optionally covers without the logo printed on them). Covers are
+  never cropped unless you want them to be.
 - **Saves & sync.** Lists every save file and save state by game. Syncs with the same WebDAV
   server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
@@ -76,9 +78,11 @@ Android 8.0 or newer.
   on both sides, you see how old each copy is and pick which to keep. A small indicator shows while
   saves sync, optionally even over a game you've gone back into.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
-  you, and downloads keep going in the background.
+  you, and downloads keep going in the background. Games that aren't on RomM yet are marked and
+  can be uploaded from their page, and duplicates can be deleted from the device, RomM or both.
 - **RetroAchievements.** Profile and your games as expandable cards with the achievements you
-  still need listed first. Local games are matched in the background by ROM hash, like
+  still need listed first; games without a set are marked "No achievements", and games you've
+  given up on can be hidden (or reset on retroachievements.org). Local games are matched in the background by ROM hash, like
   RetroArch, falling back to the title; RomM games use RomM's match. You can also set a game ID
   by hand.
 - **Customize everything.**
@@ -124,6 +128,8 @@ secrets: `PILLAR_KEYSTORE_BASE64`, `PILLAR_KEYSTORE_PASSWORD`, `PILLAR_KEY_ALIAS
   [libretro thumbnails](https://thumbnails.libretro.com) project.
 - [libretro-database](https://github.com/libretro/libretro-database) for the No-Intro checksum
   databases used to identify games (downloaded on demand).
+- [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) by Kyant (Apache 2.0) for the Liquid
+  Glass effect.
 - Console icons from libretro's [retroarch-assets](https://github.com/libretro/retroarch-assets)
   (monochrome XMB theme, CC BY 4.0), loaded on demand.
 - Inspired by the look of [iiSU](https://github.com/iisu-network/iiSU). Pillar is an independent

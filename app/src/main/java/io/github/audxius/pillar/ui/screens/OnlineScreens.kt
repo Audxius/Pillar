@@ -2,6 +2,7 @@
 
 package io.github.audxius.pillar.ui.screens
 
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -161,6 +162,7 @@ fun AchievementsScreen() {
     }
     val profile by graph.ra.profile.collectAsStateWithLifecycle()
     val played by graph.ra.played.collectAsStateWithLifecycle()
+    val hiddenRa = LocalUserData.current.hiddenRaGames
     LaunchedEffect(Unit) { graph.ra.refresh() }
     var expanded by rememberSaveable { mutableStateOf<Int?>(null) }
 
@@ -208,7 +210,7 @@ fun AchievementsScreen() {
                 if (pl.value.isEmpty()) item {
                     Text("No games played with RetroAchievements yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
                 }
-                items(pl.value, key = { "g${it.gameId}" }) { g ->
+                items(pl.value.filter { it.gameId !in hiddenRa }, key = { "g${it.gameId}" }) { g ->
                     RaGameCard(g, expanded = expanded == g.gameId) { expanded = if (expanded == g.gameId) null else g.gameId }
                 }
             }
@@ -278,6 +280,7 @@ private fun RaGameCard(g: RaRecentGame, expanded: Boolean, onToggle: () -> Unit)
                 if (localGame != null) {
                     TextButton(onClick = { nav.navigate(Routes.game(localGame.id, "ra")) }) { Text("Open in library") }
                 }
+                RaGameActions(g.gameId)
             }
         }
     }
@@ -368,3 +371,46 @@ private fun BigStat(value: String, label: String, color: Color) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/**
+ * For games you've stopped playing: hide them from Pillar's Trophies list, or reset their
+ * progress on RetroAchievements. RA's API can't reset progress for apps, so that opens the
+ * page on retroachievements.org where you do it.
+ */
+@Composable
+fun RaGameActions(raGameId: Int) {
+    val graph = LocalGraph.current
+    val user = LocalUserData.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var confirmReset by remember { mutableStateOf(false) }
+    val hidden = raGameId in user.hiddenRaGames
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(onClick = {
+            scope.launch { graph.store.updateUser { u -> u.copy(hiddenRaGames = if (hidden) u.hiddenRaGames - raGameId else u.hiddenRaGames + raGameId) } }
+        }) { Text(if (hidden) "Show in Trophies" else "Hide from Trophies") }
+        TextButton(onClick = { confirmReset = true }) { Text("Reset progress…", color = MaterialTheme.colorScheme.error) }
+    }
+    if (confirmReset) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Reset progress on RetroAchievements") },
+            text = {
+                Text(
+                    "This removes every achievement you've earned in this game from your RetroAchievements account. " +
+                        "RetroAchievements only allows it on their website: Settings → Reset Game Progress, then pick the game. Pillar will open that page."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmReset = false
+                    runCatching {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://retroachievements.org/settings")))
+                    }
+                }) { Text("Open RetroAchievements") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        )
+    }
+}
+

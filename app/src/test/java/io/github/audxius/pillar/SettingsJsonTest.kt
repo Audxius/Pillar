@@ -46,4 +46,14 @@ class SettingsMigrationTest {
         // A user choosing aurora again later keeps it.
         assertEquals(io.github.audxius.pillar.data.BackgroundStyle.AURORA, n.copy(background = io.github.audxius.pillar.data.BackgroundStyle.AURORA).normalized().background)
     }
+
+    @Test
+    fun removedLunaStyleFallsBackToGlass() {
+        val old = io.github.audxius.pillar.data.PillarJson.decodeFromString(
+            io.github.audxius.pillar.data.AppSettings.serializer(), """{"uiStyle":"LUNA","palette":"luna","themeMusic":true}""",
+        )
+        val s = old.normalized()
+        org.junit.Assert.assertEquals(io.github.audxius.pillar.data.UiStyle.GLASS, s.uiStyle)
+        org.junit.Assert.assertEquals("aurora", s.palette)
+    }
 }

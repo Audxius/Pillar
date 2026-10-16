@@ -59,7 +59,6 @@ val Palettes = listOf(
     PalettePreset("y2k", "Millennium", Color(0xFF3FB8FF), Color(0xFFFF7A00), Color(0xFFB4FF39)),
     PalettePreset("xmb", "XMB", Color(0xFF4FA3FF), Color(0xFF9AD0FF), Color(0xFFE3F1FF)),
     PalettePreset("wii", "Wii", Color(0xFF34BEED), Color(0xFF8A9BA8), Color(0xFF5CD4FF)),
-    PalettePreset("luna", "Luna", Color(0xFF245EDB), Color(0xFF3C9C3C), Color(0xFFF2A33A)),
     PalettePreset("mono", "Mono", Color(0xFFE6E6EA), Color(0xFF9A9AA6), Color(0xFFFFFFFF)),
 )
 
@@ -243,7 +242,16 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
     ) {
         // Glassmorphism puts text straight over game art: brighter secondary text and a soft shadow.
         val glassDark = settings.uiStyle == UiStyle.GLASS && dark
-        val finalScheme = if (glassDark) scheme.copy(onSurfaceVariant = Color(0xFFDAD6E8)) else scheme
+        val finalScheme = when {
+            // Pocket is always the Game Boy's four greens.
+            settings.uiStyle == UiStyle.POCKET -> scheme.copy(
+                background = Dmg3, onBackground = Dmg0, surface = Dmg2, onSurface = Dmg0, onSurfaceVariant = Dmg1,
+                primary = Dmg1, onPrimary = Dmg3, secondary = Dmg1, tertiary = Dmg0,
+                surfaceContainerHigh = Dmg2, surfaceContainer = Dmg2, outline = Dmg1, outlineVariant = Dmg1,
+            )
+            glassDark -> scheme.copy(onSurfaceVariant = Color(0xFFDAD6E8))
+            else -> scheme
+        }
         MaterialTheme(colorScheme = finalScheme, typography = typographyFor(settings.font, settings.uiStyle, shadowed = glassDark), shapes = shapes) {
             // No root Surface, so set the default text/icon color explicitly.
             CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)

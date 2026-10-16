@@ -32,6 +32,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MoreVert
@@ -162,6 +166,10 @@ private fun GameDetail(game: Game, src: String) {
     var emuSheet by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var confirmHide by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    val links by graph.rommLinks.collectAsStateWithLifecycle()
+    val rommId = game.rommId ?: links[game.id]
+    val noAch by graph.ra.noAchievements.collectAsStateWithLifecycle()
     var confirmLaunch by remember { mutableStateOf(false) }
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -207,6 +215,10 @@ private fun GameDetail(game: Game, src: String) {
                         text = { Text("Hide game") }, leadingIcon = { Icon(Icons.Rounded.VisibilityOff, null) },
                         onClick = { menu = false; confirmHide = true },
                     )
+                    DropdownMenuItem(
+                        text = { Text("Delete…") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) },
+                        onClick = { menu = false; deleting = true },
+                    )
                 }
             }
         }
@@ -230,20 +242,13 @@ private fun GameDetail(game: Game, src: String) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         SystemChip(game.system)
                         LibraryRepository.tags(game.fileName).take(3).forEach { Pill(it) }
+                        if (settings.raConfigured && user.raIds[game.id] == null && game.id in noAch) Pill("No achievements")
+                        if (settings.rommConfigured && !game.remote && rommId == null) Pill("Not on RomM")
                     }
                 }
             }
             Spacer(Modifier.height(20.dp))
 
-            // Play and the emulator choice share one button: the right end opens the emulator list.
-            val custom = user.emulatorOverride[game.id] != null
-            val status = remember(command) { command?.let { graph.launcher.status(it) } }
-            val emuLabel = when {
-                command == null -> "No emulator available"
-                status == io.github.audxius.pillar.data.GameLauncher.Status.APP_MISSING -> "${command.label} · not installed"
-                status == io.github.audxius.pillar.data.GameLauncher.Status.CORE_UNSEEN -> "${command.label} · core may be missing"
-                else -> command.label + if (custom) " · this game" else ""
-            }
 
             // Play, or download from RomM first.
             val downloads by graph.downloads.states.collectAsStateWithLifecycle()
@@ -258,9 +263,10 @@ private fun GameDetail(game: Game, src: String) {
                     if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     graph.downloadAndPlay(game)
                 }
+                // The arrow opens the emulator list; which one is picked only shows there.
                 else -> PrimaryAction(
-                    "Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(66.dp),
-                    subtitle = emuLabel, onMenu = { emuSheet = true },
+                    "Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(62.dp),
+                    onMenu = { emuSheet = true },
                 ) {
                     if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
                 }
@@ -268,6 +274,7 @@ private fun GameDetail(game: Game, src: String) {
             if (dl is DownloadState.Failed) {
                 Text(dl.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
             }
+            if (settings.rommConfigured && !game.remote && rommId == null) UploadToRomm(game)
             if (game.remote) {
                 Text(
                     "On your RomM server · ${formatBytes(game.size)}. It downloads to your ${systemName(game.system)} folder and starts when it's ready.",
@@ -286,7 +293,7 @@ private fun GameDetail(game: Game, src: String) {
             }
 
             GameSaves(game)
-            (user.rommIds[game.id] ?: game.rommId)?.let { rommId -> RommInfo(rommId) }
+            rommId?.let { RommInfo(it) }
             if (settings.raConfigured) AchievementsSection(game)
 
             Spacer(Modifier.height(16.dp))
@@ -300,6 +307,7 @@ private fun GameDetail(game: Game, src: String) {
         }
     }
 
+    if (deleting) DeleteGameDialog(game, rommId, onDone = { deleted -> deleting = false; if (deleted) nav.popBackStack() })
     if (emuSheet) {
         EmulatorSheet(
             system = game.system,
@@ -467,7 +475,10 @@ private fun AchievementsSection(game: Game) {
             }
             error != null -> Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             p == null -> Shimmer(Modifier.fillMaxWidth().height(60.dp))
-            else -> AchievementList(p)
+            else -> {
+                AchievementList(p)
+                RaGameActions(p.id)
+            }
         }
     }
 
@@ -547,3 +558,92 @@ private fun GameSaves(game: Game) {
         files.forEach { f -> SaveFileRow(f, states[f.key], onDelete = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) }
     }
 }
+
+/** Sends a local game to the matching platform on your RomM server. */
+@Composable
+private fun UploadToRomm(game: Game) {
+    val graph = LocalGraph.current
+    val scope = rememberCoroutineScope()
+    val snackbar = io.github.audxius.pillar.ui.LocalSnackbar.current
+    var progress by remember { mutableStateOf<Float?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    Spacer(Modifier.height(10.dp))
+    OutlinedButton(
+        onClick = {
+            if (progress != null) return@OutlinedButton
+            error = null
+            progress = 0f
+            scope.launch {
+                runCatching { graph.uploadToRomm(game) { p -> progress = p } }
+                    .onSuccess { snackbar.showSnackbar("Uploaded ${game.title} to RomM") }
+                    .onFailure { error = it.message ?: "Upload failed" }
+                progress = null
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Rounded.CloudUpload, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(progress?.let { "Uploading ${(it * 100).toInt()}%" } ?: "Upload to RomM")
+    }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
+}
+
+/** Removes a game from this device, RomM, or both (handy for duplicates). */
+@Composable
+private fun DeleteGameDialog(game: Game, rommId: Int?, onDone: (deleted: Boolean) -> Unit) {
+    val graph = LocalGraph.current
+    val scope = rememberCoroutineScope()
+    val snackbar = io.github.audxius.pillar.ui.LocalSnackbar.current
+    var device by remember { mutableStateOf(!game.remote) }
+    var server by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val title = gameTitle(game)
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDone(false) },
+        title = { Text("Delete $title?") },
+        text = {
+            Column {
+                if (!game.remote) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().tappable { device = !device }) {
+                        Checkbox(device, { device = it })
+                        Column {
+                            Text("From this device", style = MaterialTheme.typography.bodyLarge)
+                            Text(game.fileName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                }
+                if (rommId != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().tappable { server = !server }) {
+                        Checkbox(server, { server = it })
+                        Column {
+                            Text("From RomM", style = MaterialTheme.typography.bodyLarge)
+                            Text("Also deletes the file on your server", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                Text(
+                    "This can't be undone. Saves aren't touched.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && (device || server),
+                onClick = {
+                    busy = true
+                    // Leave the page right away (it would otherwise show "not found" as the game
+                    // disappears), and let the delete finish and report back on its own.
+                    onDone(true)
+                    graph.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        val problem = graph.deleteGame(game, device, server)
+                        snackbar.showSnackbar(problem ?: "Deleted $title")
+                    }
+                },
+            ) { Text(if (busy) "Deleting…" else "Delete", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = { onDone(false) }) { Text("Cancel") } },
+    )
+}
+

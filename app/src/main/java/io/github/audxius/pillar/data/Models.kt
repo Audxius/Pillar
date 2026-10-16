@@ -14,7 +14,8 @@ val PillarJson = Json {
 @Serializable enum class ThemeMode { SYSTEM, DARK, AMOLED, LIGHT }
 @Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL, EXO }
 @Serializable enum class BackgroundStyle { STYLE, ART, AURORA, GRADIENT, SOLID, IMAGE }
-@Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA }
+/** LUNA was removed in 0.9; it stays only so saved settings still load (and become GLASS). */
+@Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA, POCKET }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
 
 /** Which artwork fills game tiles. */
@@ -107,8 +108,12 @@ data class AppSettings(
     val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
     /** Home browses games in a vertical list of titles instead of the sideways cover carousel. */
     val homeVertical: Boolean = false,
-    /** Each style's own background music. */
-    val themeMusic: Boolean = false,
+    /** Play a game's own music (from RomM soundtracks or the music folder) when it stays in focus on home. */
+    val gameMusic: Boolean = false,
+    /** Optional folder of game music files, matched to games by name. */
+    val musicDir: String? = null,
+    /** Prefer SteamGridDB covers without a logo on them. */
+    val noLogoCovers: Boolean = false,
     val sgdbKey: String = "",
     val showGameTitles: Boolean = true,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
@@ -174,6 +179,8 @@ data class AppSettings(
         val known = kept.map { it.type }.toSet()
         val missing = WidgetType.entries.filter { it !in known && it !in RemovedWidgets }.map { WidgetConfig(it, enabled = false) }
         var s = copy(homeWidgets = kept + missing)
+        // 0.9: the Luna style was removed.
+        if (s.uiStyle == UiStyle.LUNA) s = s.copy(uiStyle = UiStyle.GLASS, palette = "aurora", themeMode = ThemeMode.DARK)
         // 0.2: game-art background replaced the aurora as the default look.
         if (s.schema < 2) s = s.copy(schema = 2, background = if (s.background == BackgroundStyle.AURORA) BackgroundStyle.ART else s.background)
         // 0.3: styles own the backdrop, covers keep their real shape, the Glass look is the new default.
@@ -223,4 +230,6 @@ data class UserData(
     val raIds: Map<String, Int> = emptyMap(),
     val rommIds: Map<String, Int> = emptyMap(),
     val remoteCover: Map<String, String> = emptyMap(),
+    /** RetroAchievements game ids hidden from the Trophies list. */
+    val hiddenRaGames: Set<Int> = emptySet(),
 )

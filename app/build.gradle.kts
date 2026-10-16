@@ -86,6 +86,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
     implementation(libs.coil.compose)
+    implementation(libs.backdrop)
     implementation(libs.coil.okhttp)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
