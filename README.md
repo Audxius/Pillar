@@ -10,23 +10,25 @@ progress. Almost everything about how it looks can be changed.
 > Pillar is a frontend. It does not include games or emulators.
 
 <p align="center">
-  <img src="docs/home.webp" width="23%" alt="Home screen" />
-  <img src="docs/library.webp" width="23%" alt="Library" />
+  <img src="docs/home.webp" width="23%" alt="Home" />
   <img src="docs/game.webp" width="23%" alt="Game page" />
+  <img src="docs/library.webp" width="23%" alt="Library" />
   <img src="docs/saves.webp" width="23%" alt="Saves" />
 </p>
 <p align="center">
-  <img src="docs/style-aero-home.webp" width="23%" alt="Frutiger Aero style, home" />
-  <img src="docs/style-aero-game.webp" width="23%" alt="Frutiger Aero style, game page" />
-  <img src="docs/style-y2k-home.webp" width="23%" alt="Y2K style, home" />
-  <img src="docs/style-y2k-game.webp" width="23%" alt="Y2K style, game page" />
+  <img src="docs/browse-shelf.webp" width="23%" alt="Shelf" />
+  <img src="docs/browse-coverflow.webp" width="23%" alt="Cover flow" />
+  <img src="docs/browse-channels.webp" width="23%" alt="Channels" />
+  <img src="docs/browse-list.webp" width="23%" alt="List" />
 </p>
 <p align="center">
-  <img src="docs/style-xmb-home.webp" width="23%" alt="XMB style" />
-  <img src="docs/style-wii-home.webp" width="23%" alt="Wii style" />
-  <img src="docs/style-grid-home.webp" width="23%" alt="Grid style" />
+  <img src="docs/style-aero.webp" width="18%" alt="Frutiger Aero" />
+  <img src="docs/style-y2k.webp" width="18%" alt="Y2K" />
+  <img src="docs/style-xmb.webp" width="18%" alt="XMB" />
+  <img src="docs/style-wii.webp" width="18%" alt="Wii" />
+  <img src="docs/style-grid.webp" width="18%" alt="Grid" />
 </p>
-<p align="center"><sub>Glassmorphism (top); Frutiger Aero and Y2K, the Y2K one with the vertical game list; XMB, Wii (with the cover flow) and Grid (with Channels)</sub></p>
+<p align="center"><sub>Liquid Glass (top); Shelf, Cover flow, Channels and List; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
 
 ## Install
 
@@ -56,9 +58,9 @@ Android 8.0 or newer.
   cubes, HUD panels, chrome buttons); XMB (the PSP/PS3 wave, in its monthly colors); Wii (white
   pinstripes and Wii-blue rims); and Grid (8-bit era box art: a black grid on white, one bold
   color). Menu sounds to match each one.
-- **Five ways to browse.** Covers, a big 3D cover flow, a shelf of game cases (with real spine,
-  back-cover, 3D box and disc/cartridge art from RomM's ScreenScraper media or ES-DE's media
-  folder), pages of screenshot banners like the Homebrew Channel, or a vertical list.
+- **Five ways to browse.** Covers, a big 3D cover flow, a shelf of real game spines with the
+  selected game's 3D box and its actual disc or cartridge (from LaunchBox's Games Database, a
+  one-time download), pages of screenshot banners like the Homebrew Channel, or a vertical list.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -77,7 +79,8 @@ Android 8.0 or newer.
   server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
   deletes anything on the server and backs up any save before replacing it. When a save changed
-  on both sides, you see how old each copy is and pick which to keep. Your RomM save slots show on
+  on both sides, you see how old each copy is and pick which to keep. Shared memory cards (PS2,
+  Dreamcast, GameCube, Wii) are shown with every game of that console. Your RomM save slots show on
   each game's page: play from any of them, or make one your main save. A small indicator shows while
   saves sync, optionally even over a game you've gone back into.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
@@ -129,6 +132,8 @@ secrets: `PILLAR_KEYSTORE_BASE64`, `PILLAR_KEYSTORE_PASSWORD`, `PILLAR_KEY_ALIAS
 - [ES-DE](https://es-de.org) for the system and emulator definitions (MIT).
 - [RomM](https://romm.app), [RetroAchievements](https://retroachievements.org) and the
   [libretro thumbnails](https://thumbnails.libretro.com) project.
+- [LaunchBox Games Database](https://gamesdb.launchbox-app.com) for spines, back covers, 3D
+  boxes, discs and cartridges (downloaded on request).
 - [libretro-database](https://github.com/libretro/libretro-database) for the No-Intro checksum
   databases used to identify games (downloaded on demand).
 - [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) by Kyant (Apache 2.0) for the Liquid

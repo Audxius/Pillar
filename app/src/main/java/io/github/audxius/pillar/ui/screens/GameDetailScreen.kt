@@ -8,8 +8,6 @@ import android.os.Build
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +15,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,7 +43,6 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -69,15 +65,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -86,19 +76,13 @@ import io.github.audxius.pillar.data.DownloadState
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.RaAchievement
 import io.github.audxius.pillar.data.RaGameProgress
-import io.github.audxius.pillar.data.RommRom
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.Glass
-import io.github.audxius.pillar.ui.components.GameLogo
-import io.github.audxius.pillar.ui.components.Gloss
 import io.github.audxius.pillar.ui.components.PrimaryAction
 import io.github.audxius.pillar.ui.components.rememberArt
 import io.github.audxius.pillar.ui.components.rememberHeroSources
-import io.github.audxius.pillar.ui.components.fadeBottom
-import io.github.audxius.pillar.ui.components.MultiImage
 import io.github.audxius.pillar.ui.components.Pill
-import io.github.audxius.pillar.ui.components.ProgressRing
 import io.github.audxius.pillar.ui.components.Shimmer
 import io.github.audxius.pillar.ui.components.SystemChip
 import io.github.audxius.pillar.ui.components.formatBytes
@@ -112,8 +96,6 @@ import io.github.audxius.pillar.ui.theme.LocalCorner
 import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
-import io.github.audxius.pillar.ui.theme.onColor
-import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.launch
 
 @Composable
@@ -525,9 +507,10 @@ private fun GameSaves(game: Game, rommId: Int?) {
         if (settings.savesDir == null && settings.statesDir == null) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val stem = game.baseName.lowercase()
+            // The game's own saves, plus its console's shared memory cards (PS2, Dreamcast, GC, Wii).
             val mine = graph.saveSync.listLocal().filter {
                 val n = it.name.lowercase().removeSuffix(".png")
-                n.substringBeforeLast('.') == stem
+                n.substringBeforeLast('.') == stem || sharedSaveSystem(it) == game.system
             }
             files = mine.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }
             states = graph.saveSync.fileStates(mine)

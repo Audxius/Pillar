@@ -35,21 +35,6 @@ data class RaProfile(
 )
 
 @Serializable
-data class RaRecentAchievement(
-    @SerialName("Date") val date: String = "",
-    @SerialName("HardcoreMode") val hardcore: Int = 0,
-    @SerialName("AchievementID") val id: Int = 0,
-    @SerialName("Title") val title: String = "",
-    @SerialName("Description") val description: String = "",
-    @SerialName("Points") val points: Int = 0,
-    @SerialName("BadgeURL") val badgeUrl: String? = null,
-    @SerialName("GameTitle") val gameTitle: String = "",
-    @SerialName("GameIcon") val gameIcon: String? = null,
-    @SerialName("GameID") val gameId: Int = 0,
-    @SerialName("ConsoleName") val consoleName: String = "",
-)
-
-@Serializable
 data class RaRecentGame(
     @SerialName("GameID") val gameId: Int = 0,
     @SerialName("ConsoleName") val consoleName: String = "",
@@ -198,12 +183,6 @@ class RaClient(
 
     suspend fun profile(): RaProfile =
         PillarJson.decodeFromString(RaProfile.serializer(), call("API_GetUserProfile.php", mapOf("u" to user)))
-
-    suspend fun recentAchievements(days: Int = 7): List<RaRecentAchievement> =
-        PillarJson.decodeFromString(
-            ListSerializer(RaRecentAchievement.serializer()),
-            call("API_GetUserRecentAchievements.php", mapOf("u" to user, "m" to (days * 24 * 60).toString())),
-        ).sortedByDescending { it.date }
 
     suspend fun recentlyPlayed(count: Int = 12): List<RaRecentGame> =
         PillarJson.decodeFromString(

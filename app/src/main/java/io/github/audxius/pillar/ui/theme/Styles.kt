@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.draw.drawBehind
 import android.os.Build
 import androidx.compose.ui.unit.Dp
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize

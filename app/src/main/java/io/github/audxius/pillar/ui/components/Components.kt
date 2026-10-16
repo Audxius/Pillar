@@ -2,7 +2,6 @@
 
 package io.github.audxius.pillar.ui.components
 
-import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -19,7 +18,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -57,7 +55,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,7 +71,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -88,11 +84,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.request.allowHardware
-import coil3.toBitmap
 import io.github.audxius.pillar.data.BackgroundStyle
 import io.github.audxius.pillar.data.CoverShape
 import io.github.audxius.pillar.data.Game
@@ -110,10 +103,8 @@ import io.github.audxius.pillar.ui.theme.primaryActionOuter
 import io.github.audxius.pillar.ui.theme.primaryActionFill
 import io.github.audxius.pillar.ui.theme.StyleBackdrop
 import io.github.audxius.pillar.ui.theme.rememberFeedback
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 
 val LocalSharedScope = compositionLocalOf<SharedTransitionScope?> { null }
 val LocalNavScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
@@ -276,8 +267,7 @@ fun Glass(
 }
 
 /**
- * Tries each image source in order and falls back to [fallback] when none load. Optionally
- * reports the dominant color of the first image that loads.
+ * Tries each image source in order and falls back to [fallback] when none load.
  */
 @Composable
 fun MultiImage(
@@ -289,7 +279,6 @@ fun MultiImage(
     fit: Boolean = false,
     /** In fit mode, inset the image so it sits like a case in a frame. */
     fitInset: Dp = 0.dp,
-    onColor: ((Color) -> Unit)? = null,
     onAspect: ((Float) -> Unit)? = null,
     /** Decode at most this many pixels on the long side (for backdrops that get blurred anyway). */
     decodeSize: Int? = null,
@@ -302,7 +291,6 @@ fun MultiImage(
         if (!loaded) fallback()
         if (index < sources.size) {
             val src = sources[index]
-            var bitmapForColor by remember(src) { mutableStateOf<Bitmap?>(null) }
             if (fit && loaded) {
                 // A tiny decode stretched to fill looks soft and costs almost nothing, unlike a live blur
                 // on every tile.
@@ -318,7 +306,6 @@ fun MultiImage(
             AsyncImage(
                 model = remember(src, decodeSize) {
                     ImageRequest.Builder(context).data(src).apply {
-                        if (onColor != null) allowHardware(false)
                         decodeSize?.let { size(it) }
                     }.build()
                 },
@@ -330,20 +317,9 @@ fun MultiImage(
                     loaded = true
                     val img = state.result.image
                     if (onAspect != null && img.height > 0) onAspect(img.width.toFloat() / img.height)
-                    if (onColor != null) bitmapForColor = runCatching { state.result.image.toBitmap() }.getOrNull()
                 },
                 onError = { index++ },
             )
-            if (onColor != null) {
-                LaunchedEffect(bitmapForColor) {
-                    val bmp = bitmapForColor ?: return@LaunchedEffect
-                    val color = withContext(Dispatchers.Default) {
-                        val p = Palette.from(bmp).maximumColorCount(16).generate()
-                        (p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.dominantSwatch)?.rgb
-                    }
-                    color?.let { onColor(Color(it)) }
-                }
-            }
         }
     }
 }
@@ -711,7 +687,7 @@ fun rememberCoverSources(game: Game): List<String> {
     }
 }
 
-/** 16:9 in-game art for banner tiles: screenshots and title screens, then wider art, then covers. */
+/** Gameplay screenshots for banner tiles (then the title screen). */
 @Composable
 fun rememberSnapSources(game: Game): List<String> {
     val graph = LocalGraph.current
@@ -719,8 +695,8 @@ fun rememberSnapSources(game: Game): List<String> {
     val user = LocalUserData.current
     val art = rememberArt(game)
     val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
-    return remember(game.id, art, settings.onlineCovers, user.customCover[game.id], mediaVersion) {
-        graph.library.snapCandidates(game, settings, user, art)
+    return remember(game.id, art, settings.onlineCovers, mediaVersion) {
+        graph.library.snapCandidates(game, settings, art)
     }
 }
 

@@ -1,10 +1,6 @@
 package io.github.audxius.pillar.data
 
 import android.content.Context
-import android.content.Intent
-import android.graphics.Bitmap
-import android.util.LruCache
-import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -61,6 +57,7 @@ class AppGraph(val context: Context) {
     val ra = RaRepository(context, raClient, store, catalog, scope)
     val identifier = GameIdentifier(context, http, catalog, scope)
     val sounds = UiSounds(context)
+    val boxArt = BoxArtDb(context, http, scope)
     /** True while one of Pillar's screens is visible (set by MainActivity). */
     val foreground = MutableStateFlow(false)
 

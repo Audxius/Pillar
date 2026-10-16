@@ -113,8 +113,6 @@ data class AppSettings(
     /** Crop art to fill tiles instead of showing all of it over a blurred backdrop. */
     val coverCrop: Boolean = false,
     val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
-    /** Replaced by [homeBrowse] in 1.0; read once to carry the choice over. */
-    val homeVertical: Boolean = false,
     val homeBrowse: HomeBrowse = HomeBrowse.COVERS,
     /** Menu sound effects (taps, back, carousel ticks), in each style's own flavor. */
     val menuSounds: Boolean = true,
@@ -128,14 +126,10 @@ data class AppSettings(
     val navLabels: Boolean = true,
     val animations: Boolean = true,
     val haptics: Boolean = true,
-    val uiSounds: Boolean = false,
     val orientation: OrientationMode = OrientationMode.PORTRAIT,
 
     // Home
     val homeWidgets: List<WidgetConfig> = DefaultWidgets,
-    val greetingName: String = "",
-    val clock24h: Boolean = true,
-    val showBattery: Boolean = true,
 
     // Library
     val romRoots: List<String> = emptyList(),
@@ -185,8 +179,6 @@ data class AppSettings(
         val known = kept.map { it.type }.toSet()
         val missing = WidgetType.entries.filter { it !in known && it !in RemovedWidgets }.map { WidgetConfig(it, enabled = false) }
         var s = copy(homeWidgets = kept + missing)
-        // 1.0: the vertical-list switch became one of several browse styles.
-        if (s.homeVertical) s = s.copy(homeVertical = false, homeBrowse = HomeBrowse.LIST)
         // 0.9: the Luna style was removed.
         if (s.uiStyle == UiStyle.LUNA || s.uiStyle == UiStyle.POCKET) s = s.copy(uiStyle = UiStyle.GLASS, palette = "aurora", themeMode = ThemeMode.DARK, font = AppFont.OUTFIT)
         // 0.2: game-art background replaced the aurora as the default look.

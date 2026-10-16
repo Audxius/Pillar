@@ -10,10 +10,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -37,21 +35,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
-import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -70,7 +63,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -83,21 +75,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.audxius.pillar.data.Game
 import io.github.audxius.pillar.data.GameLauncher
 import io.github.audxius.pillar.data.retroArchCore
-import io.github.audxius.pillar.data.LibraryLayout
-import io.github.audxius.pillar.data.LibraryRepository
-import io.github.audxius.pillar.data.RommRom
 import io.github.audxius.pillar.data.SortMode
 import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
-import io.github.audxius.pillar.ui.LocalSnackbar
 import io.github.audxius.pillar.ui.Routes
 import io.github.audxius.pillar.ui.components.EmptyState
-import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.GameTile
-import io.github.audxius.pillar.ui.components.Glass
 import io.github.audxius.pillar.ui.components.gamesLabel
 import io.github.audxius.pillar.ui.components.SectionHeader
-import io.github.audxius.pillar.ui.components.gameTitle
 import io.github.audxius.pillar.ui.components.systemColor
 import io.github.audxius.pillar.ui.components.systemName
 import io.github.audxius.pillar.ui.components.systemDisplayName
@@ -114,7 +99,6 @@ import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.ui.theme.styledSurface
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ---- Library --------------------------------------------------------------------------------
@@ -397,33 +381,6 @@ private fun SortMode.label() = when (this) {
     SortMode.RECENTLY_PLAYED -> "Recently played"
     SortMode.RECENTLY_ADDED -> "Recently added"
     SortMode.MOST_PLAYED -> "Most played"
-}
-
-@Composable
-fun GameListRow(game: Game, src: String, showSystem: Boolean = false, onLong: (() -> Unit)? = null) {
-    val nav = LocalNav.current
-    val user = LocalUserData.current
-    Glass(
-        Modifier.padding(horizontal = 16.dp).fillMaxWidth().tappable(onLongClick = onLong) { nav.navigate(Routes.game(game.id, src)) },
-        padding = 10.dp,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GameCover(game, Modifier.width(52.dp), sharedKey = "cover-$src-${game.id}", compact = true)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(gameTitle(game), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val tags = LibraryRepository.tags(game.fileName).take(3).joinToString(" · ")
-                val sub = listOfNotNull(
-                    if (showSystem) systemName(game.system) else null,
-                    tags.ifBlank { null },
-                    user.lastPlayed[game.id]?.let { "Played ${timeAgo(it)}" },
-                ).joinToString(" · ")
-                if (sub.isNotBlank()) {
-                    Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
 }
 
 /** Lists every launch command for a system, installed emulators first. */

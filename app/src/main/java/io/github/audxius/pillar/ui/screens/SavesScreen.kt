@@ -62,7 +62,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.audxius.pillar.data.Game
-import io.github.audxius.pillar.ui.theme.LocalUserData
 import io.github.audxius.pillar.data.RommSave
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.ThumbMatch
@@ -119,6 +118,23 @@ private class SaveGameFinder(games: List<Game>) {
             docUri = "",
             treeUri = "",
         )
+    }
+}
+
+/**
+ * The system a shared save file belongs to: memory cards and system storage that consoles like
+ * the PS2, Dreamcast, GameCube and Wii keep for all their games, rather than one save per game.
+ */
+internal fun sharedSaveSystem(f: LocalSaveFile): String? {
+    val name = f.name.lowercase()
+    val path = f.key.lowercase()
+    val core = f.key.split('/').let { if (it.size >= 3) it[1].lowercase() else "" }
+    return when {
+        name.endsWith(".ps2") || name.startsWith("mcd00") || "pcsx2" in core || "lrps2" in core || "aethersx2" in core -> "ps2"
+        name.startsWith("vmu_save") || name.endsWith(".vmu") || ("flycast" in core && name.endsWith(".bin")) -> "dreamcast"
+        "dolphin" in core && ("/wii/" in path || "nand" in path) -> "wii"
+        name.endsWith(".gci") || name.endsWith(".raw") && "dolphin" in core || "/gc/" in path -> "gc"
+        else -> null
     }
 }
 
@@ -187,7 +203,7 @@ fun SavesScreen() {
 
     val finder = remember(games) { SaveGameFinder(games) }
     val grouped = remember(files) {
-        files.orEmpty().groupBy { saveStem(it.name).lowercase() }.entries
+        files.orEmpty().groupBy { f -> sharedSaveSystem(f)?.let { "system:$it" } ?: saveStem(f.name).lowercase() }.entries
             .sortedByDescending { e -> e.value.maxOf { it.modified } }
     }
 
@@ -292,7 +308,9 @@ fun SavesScreen() {
         } else {
             item { SectionHeader("By game") }
             items(grouped, key = { it.key }) { (stem, list) ->
-                SaveGroup(finder.find(list.first()), list, states, onDelete = { deleting = it })
+                val shared = sharedSaveSystem(list.first())
+                if (shared != null) SystemSaveGroup(shared, list, states, onDelete = { deleting = it })
+                else SaveGroup(finder.find(list.first()), list, states, onDelete = { deleting = it })
             }
         }
     }
@@ -300,8 +318,15 @@ fun SavesScreen() {
     deleting?.let { f ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("Delete ${f.name}?") },
-            text = { Text("A backup is kept in Pillar. Sync never deletes anything from your server, so the server copy stays.") },
+            title = { Text(if (sharedSaveSystem(f) != null) "This is a system file" else "Delete ${f.name}?") },
+            text = {
+                val sys = sharedSaveSystem(f)
+                Text(
+                    if (sys != null) "${f.name} isn't one game's save: it's ${io.github.audxius.pillar.ui.components.systemDisplayName(sys)} storage shared by all its games, " +
+                        "so deleting it removes every ${io.github.audxius.pillar.ui.components.systemDisplayName(sys)} save in it on this device. A backup is kept in Pillar, and the server copy stays."
+                    else "A backup is kept in Pillar. Sync never deletes anything from your server, so the server copy stays."
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { graph.saveSync.deleteLocal(f); refresh++ }
@@ -409,6 +434,36 @@ private fun CopyChoice(
     }
 }
 
+/** A console's shared memory cards / system storage, which hold the saves of all its games. */
+@Composable
+private fun SystemSaveGroup(system: String, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
+    var open by rememberSaveable("sys-$system") { mutableStateOf(false) }
+    val synced = files.all { states[it.key] == SyncFileState.SYNCED }
+    Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().tappable { open = !open }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(52.dp, 69.dp).clip(RoundedCornerShape(10.dp)).background(io.github.audxius.pillar.ui.components.systemColor(system)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.Save, null, tint = Color.White) }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("${io.github.audxius.pillar.ui.components.systemDisplayName(system)} system saves", style = MaterialTheme.typography.titleSmall)
+                Text("Memory cards shared by all your ${io.github.audxius.pillar.ui.components.systemName(system)} games", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val c = if (synced) successColor() else MaterialTheme.colorScheme.primary
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(c))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (synced) "Synced" else "Not all synced", style = MaterialTheme.typography.labelMedium, color = c)
+                }
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(open) {
+            Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) { files.forEach { f -> SaveFileRow(f, states[f.key], onDelete) } }
+        }
+    }
+}
+
 /** One game's saves: collapsed to a summary, expands to its files. */
 @Composable
 private fun SaveGroup(game: Game, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
@@ -490,7 +545,7 @@ fun SaveFileRow(f: LocalSaveFile, state: SyncFileState?, onDelete: (LocalSaveFil
     val parts = f.key.split('/')
     val core = parts.drop(1).dropLast(1).joinToString("/").ifBlank { null }
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        val (title, isState) = saveLabel(f.name)
+        val (title, isState) = if (sharedSaveSystem(f) != null) "Shared memory card · ${f.name}" to false else saveLabel(f.name)
         Icon(
             if (isState) Icons.Rounded.PhotoCamera else Icons.Rounded.Save, null,
             Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(color.copy(alpha = 0.14f)).padding(7.dp),

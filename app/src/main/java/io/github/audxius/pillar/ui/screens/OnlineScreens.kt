@@ -2,7 +2,6 @@
 
 package io.github.audxius.pillar.ui.screens
 
-import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically

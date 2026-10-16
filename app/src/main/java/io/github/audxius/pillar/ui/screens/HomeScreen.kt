@@ -1,18 +1,14 @@
 package io.github.audxius.pillar.ui.screens
 
-import android.os.BatteryManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,25 +24,16 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.BatteryChargingFull
-import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Casino
-import androidx.compose.material.icons.rounded.CloudOff
-import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,44 +41,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import io.github.audxius.pillar.data.Game
-import io.github.audxius.pillar.data.Loadable
-import io.github.audxius.pillar.data.RommRom
 import io.github.audxius.pillar.data.WidgetType
 import io.github.audxius.pillar.data.RemovedWidgets
-import io.github.audxius.pillar.data.raMedia
 import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
 import io.github.audxius.pillar.ui.Routes
-import io.github.audxius.pillar.ui.components.CoverPlaceholder
 import io.github.audxius.pillar.ui.components.SectionHeader
-import io.github.audxius.pillar.ui.components.ratio
 import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.GameTile
 import io.github.audxius.pillar.ui.components.GapIfNotEmpty
 import io.github.audxius.pillar.ui.components.Glass
 import io.github.audxius.pillar.ui.components.gamesLabel
-import io.github.audxius.pillar.ui.components.LinearMeter
 import io.github.audxius.pillar.ui.components.MultiImage
-import io.github.audxius.pillar.ui.components.Shimmer
 import io.github.audxius.pillar.ui.components.SystemChip
 import io.github.audxius.pillar.ui.components.formatBytes
 import io.github.audxius.pillar.ui.components.gameTitle
 import io.github.audxius.pillar.ui.components.systemColor
-import io.github.audxius.pillar.ui.components.systemName
 import io.github.audxius.pillar.ui.components.tappable
 import io.github.audxius.pillar.ui.rememberGameLauncher
 import io.github.audxius.pillar.ui.settings.SettingsPage
@@ -100,12 +75,7 @@ import io.github.audxius.pillar.ui.theme.LocalCorner
 import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import kotlin.math.absoluteValue
 
 /** Games the user hasn't hidden, on systems they haven't hidden. */
@@ -365,24 +335,6 @@ private fun GameRowWidget(title: String, games: List<Game>, src: String, onLong:
 }
 
 // ---- RetroAchievements ---------------------------------------------------------------------
-
-@Composable
-private fun ConnectCard(title: String, body: String, page: SettingsPage) {
-    val nav = LocalNav.current
-    Glass(Modifier.padding(horizontal = 20.dp).fillMaxWidth().tappable { nav.navigate(Routes.settingsPage(page)) }, padding = 18.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (page == SettingsPage.RA) Icons.Rounded.EmojiEvents else Icons.Rounded.CloudOff, null,
-                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp),
-            )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
 
 @Composable
 private fun RandomWidget(games: List<Game>) {

@@ -11,23 +11,16 @@ coil = "3.1.0"
 okhttp = "4.12.0"
 serialization = "1.8.1"
 coroutines = "1.10.2"
-palette = "1.0.0"
-documentfile = "1.0.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
-androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 androidx-datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
-androidx-palette = { module = "androidx.palette:palette-ktx", version.ref = "palette" }
-androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-animation = { module = "androidx.compose.animation:animation" }
 compose-material3 = { module = "androidx.compose.material3:material3" }

@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
@@ -199,6 +198,12 @@ fun PillarRoot(graph: AppGraph) {
                 ) {
                     BottomBar(route) { target ->
                         if (target == route) return@BottomBar
+                        // Home is the start of the stack: just go back to it. Navigating to it with
+                        // save/restore state restored the tab above it, so Home opened Saves.
+                        if (target == Routes.HOME) {
+                            if (!nav.popBackStack(Routes.HOME, inclusive = false)) nav.navigate(Routes.HOME)
+                            return@BottomBar
+                        }
                         nav.navigate(target) {
                             popUpTo(Routes.HOME) { saveState = true }
                             launchSingleTop = true

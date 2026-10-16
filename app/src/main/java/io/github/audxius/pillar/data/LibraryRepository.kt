@@ -289,16 +289,14 @@ class LibraryRepository(
         art?.sgdbSquare?.let(::add)
     }.distinct()
 
-    /** Screenshots first (16:9 tiles), then wide art, then covers. */
-    fun snapCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
+    /** Gameplay screenshots only (then the title screen), so banner tiles all look alike. */
+    fun snapCandidates(game: Game, settings: AppSettings, art: ArtSet?): List<String> = buildList {
         addAll(mediaFor(game, MediaKind.SNAP))
         if (settings.onlineCovers) {
             art?.snap?.let(::add)
             if (art?.libretroChecked != true) libretroUrl(game, OnlineArt.SNAP)?.let(::add)
             art?.snap?.let { add(it.replace("/Named_Snaps/", "/Named_Titles/")) }
         }
-        art?.sgdbHero?.let(::add)
-        addAll(coverCandidates(game, settings, user, art))
     }.distinct()
 
     /** ES-DE's extra box media for the shelf: back cover, 3D box and the disc or cartridge itself. */

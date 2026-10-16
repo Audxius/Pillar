@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -103,7 +102,6 @@ import io.github.audxius.pillar.ui.theme.LocalAmbient
 import io.github.audxius.pillar.ui.theme.LocalGraph
 import io.github.audxius.pillar.ui.theme.LocalSettings
 import io.github.audxius.pillar.ui.theme.LocalUserData
-import io.github.audxius.pillar.ui.theme.Palettes
 import io.github.audxius.pillar.ui.theme.styledSurface
 import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.launch
@@ -526,6 +524,35 @@ private fun LibraryPage() {
                     graph.library.reindexMediaAsync()
                 }
             })
+        }
+    }
+
+    SettingsGroup("Box art database") {
+        val status by graph.boxArt.status.collectAsStateWithLifecycle()
+        val allGames by graph.allGames.collectAsStateWithLifecycle()
+        val user = io.github.audxius.pillar.ui.theme.LocalUserData.current
+        Text(
+            "Real spines, back covers, 3D boxes, discs and cartridges for the Shelf, from LaunchBox's community Games Database. " +
+                "It's one ~110 MB download that Pillar reads once, keeping only your games' entries. Run it again after adding games.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+        when (val st = status) {
+            is io.github.audxius.pillar.data.BoxArtDb.Status.Running -> Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Text(st.message, style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.material3.LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth())
+            }
+            else -> SettingRow(
+                if (st is io.github.audxius.pillar.data.BoxArtDb.Status.Done) "Update box art" else "Download box art database",
+                when (st) {
+                    is io.github.audxius.pillar.data.BoxArtDb.Status.Done -> "Found art for ${st.matched} games"
+                    is io.github.audxius.pillar.data.BoxArtDb.Status.Failed -> st.message
+                    else -> "About 110 MB, best on Wi-Fi"
+                },
+                Icons.Rounded.Folder,
+                onClick = { graph.boxArt.download(allGames, user.customTitle) },
+            )
         }
     }
 

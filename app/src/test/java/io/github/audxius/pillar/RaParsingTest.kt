@@ -3,7 +3,6 @@ package io.github.audxius.pillar
 import io.github.audxius.pillar.data.PillarJson
 import io.github.audxius.pillar.data.RaClient
 import io.github.audxius.pillar.data.RaProfile
-import io.github.audxius.pillar.data.RaRecentAchievement
 import io.github.audxius.pillar.data.RaRecentGame
 import kotlinx.serialization.builtins.ListSerializer
 import org.junit.Assert.assertEquals
@@ -27,16 +26,7 @@ class RaParsingTest {
     }
 
     @Test
-    fun recentAchievementsAndGames() {
-        val a = PillarJson.decodeFromString(ListSerializer(RaRecentAchievement.serializer()), """
-            [{"Date":"2023-12-27 16:04:50","HardcoreMode":1,"AchievementID":98012,"Title":"Beginner I",
-              "Description":"Clear stages 01 - 05 in Quest.","BadgeName":"108302","Points":5,"TrueRatio":25,"Type":null,
-              "Author":"jos","GameTitle":"Pokemon Pinball mini","GameIcon":"/Images/028399.png","GameID":14715,
-              "ConsoleName":"Pokemon Mini","BadgeURL":"/Badge/108302.png","GameURL":"/game/14715"}]
-        """).single()
-        assertEquals("/Badge/108302.png", a.badgeUrl)
-        assertEquals(1, a.hardcore)
-
+    fun recentlyPlayedGames() {
         val g = PillarJson.decodeFromString(ListSerializer(RaRecentGame.serializer()), """
             [{"GameID":11332,"ConsoleID":12,"ConsoleName":"PlayStation","Title":"Final Fantasy Origins",
               "ImageIcon":"/Images/060249.png","ImageTitle":"/Images/026707.png","ImageIngame":"/Images/026708.png",
