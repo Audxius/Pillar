@@ -51,6 +51,7 @@ enum class WidgetType(val title: String, val description: String) {
     // Removed in 0.2 (Pillar is not a launcher); kept only so older saved layouts still load.
     QUICK_APPS("Quick apps", "Removed"),
     STATS("Library stats", "Counts across your collection"),
+    ALL_GAMES("All games", "Your whole library, most recently played first"),
 }
 
 @Serializable
@@ -58,16 +59,16 @@ data class WidgetConfig(val type: WidgetType, val enabled: Boolean = true)
 
 /** Widgets that no longer exist; dropped from saved layouts. */
 // 1.0: Pillar isn't a launcher (no clock/greeting), and achievements live in their own tab.
-val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT, WidgetType.HEADER, WidgetType.RA_PROFILE, WidgetType.RA_PLAYED)
+val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT, WidgetType.HEADER, WidgetType.RA_PROFILE, WidgetType.RA_PLAYED, WidgetType.ROMM_LATEST)
 
 val DefaultWidgets = listOf(
     WidgetConfig(WidgetType.CONTINUE),
     WidgetConfig(WidgetType.PLATFORMS),
     WidgetConfig(WidgetType.FAVORITES),
     WidgetConfig(WidgetType.RECENTLY_ADDED),
-    WidgetConfig(WidgetType.ROMM_LATEST),
     WidgetConfig(WidgetType.RANDOM),
     WidgetConfig(WidgetType.STATS, enabled = false),
+    WidgetConfig(WidgetType.ALL_GAMES),
 )
 
 @Serializable
@@ -196,6 +197,11 @@ data class AppSettings(
             background = if (s.background == BackgroundStyle.ART || s.background == BackgroundStyle.AURORA) BackgroundStyle.STYLE else s.background,
             font = if (s.font == AppFont.NUNITO) AppFont.OUTFIT else s.font,
             cornerRadius = if (s.cornerRadius == 22) 24 else s.cornerRadius,
+        )
+        // 0.11: "All games" replaced "New on RomM" on the widget home, switched on.
+        if (s.schema < 4) s = s.copy(
+            schema = 4,
+            homeWidgets = s.homeWidgets.map { if (it.type == WidgetType.ALL_GAMES) it.copy(enabled = true) else it },
         )
         return s
     }

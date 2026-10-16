@@ -711,6 +711,19 @@ fun rememberCoverSources(game: Game): List<String> {
     }
 }
 
+/** 16:9 in-game art for banner tiles: screenshots and title screens, then wider art, then covers. */
+@Composable
+fun rememberSnapSources(game: Game): List<String> {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    val user = LocalUserData.current
+    val art = rememberArt(game)
+    val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
+    return remember(game.id, art, settings.onlineCovers, user.customCover[game.id], mediaVersion) {
+        graph.library.snapCandidates(game, settings, user, art)
+    }
+}
+
 @Composable
 fun rememberHeroSources(game: Game): List<String> {
     val graph = LocalGraph.current
@@ -746,12 +759,12 @@ private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, streng
     ) { current ->
         if (current == null) return@Crossfade
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = strength }) {
-            // A small decode is all a heavily blurred backdrop needs, and keeps focus changes cheap.
+            // No live blur: a 48-pixel decode stretched to the screen is already soft, and costs
+            // nothing per frame (a full-screen blur had to be redone by the GPU constantly).
             MultiImage(
                 current,
-                Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }
-                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(24.dp) else Modifier),
-                decodeSize = 160,
+                Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f },
+                decodeSize = 48,
             ) {}
             Box(
                 Modifier.fillMaxSize().background(

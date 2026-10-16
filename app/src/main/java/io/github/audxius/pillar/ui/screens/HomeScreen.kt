@@ -134,6 +134,11 @@ private fun HomeFeed() {
     LaunchedEffect(Unit) { ambient.value = null }
     var quick by remember { mutableStateOf<Game?>(null) }
 
+    val nav = LocalNav.current
+    val byRecent = remember(games, user.lastPlayed, user.customTitle) {
+        val (played, rest) = games.partition { (user.lastPlayed[it.id] ?: 0) > 0 }
+        played.sortedByDescending { user.lastPlayed[it.id] } + rest.sortedBy { (user.customTitle[it.id] ?: it.title).lowercase() }
+    }
     val recent = remember(games, user.lastPlayed) {
         games.filter { (user.lastPlayed[it.id] ?: 0) > 0 }.sortedByDescending { user.lastPlayed[it.id] }.take(10)
     }
@@ -146,6 +151,21 @@ private fun HomeFeed() {
         item { Spacer(Modifier.statusBarsPadding()) }
         if (games.isEmpty()) item("empty") { GapIfNotEmpty(12.dp) { EmptyLibraryCard() } }
         for ((index, type) in enabled.withIndex()) {
+            // The whole library goes in as rows of the list itself, so even big libraries stay smooth.
+            if (type == WidgetType.ALL_GAMES) {
+                item("all-head") {
+                    GapIfNotEmpty(if (index == 0) 0.dp else 22.dp) {
+                        SectionHeader("All games · ${gamesLabel(games.size)}")
+                    }
+                }
+                items(byRecent.chunked(3), key = { row -> "all-" + row.first().id }) { row ->
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { g -> GameTile(g, Modifier.weight(1f), sharedKey = "cover-all-${g.id}", onLongClick = { quick = g }) { nav.navigate(Routes.game(g.id, "all")) } }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                continue
+            }
             item(type.name) {
                 GapIfNotEmpty(if (index == 0) 0.dp else 22.dp) {
                 when (type) {
@@ -157,7 +177,8 @@ private fun HomeFeed() {
                     WidgetType.RA_PROFILE -> Unit
                     WidgetType.RA_RECENT -> Unit
                     WidgetType.RA_PLAYED -> Unit
-                    WidgetType.ROMM_LATEST -> RommLatestWidget()
+                    WidgetType.ROMM_LATEST -> Unit
+                    WidgetType.ALL_GAMES -> Unit
                     WidgetType.RANDOM -> RandomWidget(games)
                     WidgetType.QUICK_APPS -> Unit
                     WidgetType.STATS -> StatsWidget(games)
@@ -362,20 +383,6 @@ private fun ConnectCard(title: String, body: String, page: SettingsPage) {
         }
     }
 }
-
-@Composable
-private fun RommLatestWidget() {
-    val settings = LocalSettings.current
-    if (!settings.rommConfigured) {
-        ConnectCard("Connect your RomM server", "Your whole RomM library shows up here, ready to download and play.", SettingsPage.ROMM)
-        return
-    }
-    val games = rememberVisibleGames()
-    val latest = remember(games) { games.filter { it.remote }.sortedByDescending { it.modified }.take(20) }
-    GameRowWidget("New on RomM", latest, "romm") { }
-}
-
-// ---- Misc widgets --------------------------------------------------------------------------
 
 @Composable
 private fun RandomWidget(games: List<Game>) {

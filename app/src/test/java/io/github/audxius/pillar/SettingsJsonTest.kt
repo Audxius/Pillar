@@ -32,7 +32,7 @@ class SettingsJsonTest {
         // Removed widgets are dropped, everything else is offered.
         assertEquals(WidgetType.entries.size - io.github.audxius.pillar.data.RemovedWidgets.size, normalized.homeWidgets.size)
         assertTrue(normalized.homeWidgets.none { it.type in io.github.audxius.pillar.data.RemovedWidgets })
-        assertTrue(normalized.homeWidgets.drop(1).none { it.enabled })
+        assertTrue(normalized.homeWidgets.drop(1).none { it.enabled && it.type != WidgetType.ALL_GAMES })
     }
 }
 
@@ -42,7 +42,7 @@ class SettingsMigrationTest {
         val old = PillarJson.decodeFromString(AppSettings.serializer(), """{"background":"AURORA","homeWidgets":[{"type":"QUICK_APPS"}]}""")
         val n = old.normalized()
         assertEquals(io.github.audxius.pillar.data.BackgroundStyle.STYLE, n.background)
-        assertEquals(3, n.schema)
+        assertEquals(4, n.schema)
         // A user choosing aurora again later keeps it.
         assertEquals(io.github.audxius.pillar.data.BackgroundStyle.AURORA, n.copy(background = io.github.audxius.pillar.data.BackgroundStyle.AURORA).normalized().background)
     }

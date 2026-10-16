@@ -87,6 +87,20 @@ class AppGraph(val context: Context) {
 
     fun rommIdFor(game: Game): Int? = game.rommId ?: rommLinks.value[game.id]
 
+    /** Real box media for the shelf, from RomM's ScreenScraper media or ES-DE's media folder. */
+    data class ShelfArt(val spine: String?, val back: String?, val box3d: String?, val media: String?)
+
+    fun shelfArt(game: Game): ShelfArt {
+        val ss = rommIdFor(game)?.let { rommRepo.rom(it)?.ss }
+        val (back, box3d, media) = library.shelfMedia(game)
+        return ShelfArt(
+            spine = romm.resourceUrl(ss?.sidePath),
+            back = back ?: romm.resourceUrl(ss?.backPath),
+            box3d = box3d ?: romm.resourceUrl(ss?.box3dPath),
+            media = media ?: romm.resourceUrl(ss?.physicalPath),
+        )
+    }
+
     /**
      * The one library: games on this device plus RomM games that aren't downloaded yet. A RomM game
      * already on the device (linked by a download, or same system and file name) shows once.

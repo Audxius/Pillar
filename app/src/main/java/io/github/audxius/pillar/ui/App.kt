@@ -57,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -174,7 +175,10 @@ fun PillarRoot(graph: AppGraph) {
         val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
         CompositionLocalProvider(LocalNav provides nav, LocalSnackbar provides snackbar, io.github.audxius.pillar.ui.theme.LocalBackdrop provides backdrop) {
             Box(Modifier.fillMaxSize()) {
-                PillarBackground(Modifier.layerBackdrop(backdrop))
+                // Each in its own render layer: an animating overlay or scrolling content then never
+                // makes the (expensive, mostly static) wallpaper redraw.
+                PillarBackground(Modifier.graphicsLayer().layerBackdrop(backdrop))
+                Box(Modifier.fillMaxSize().graphicsLayer()) { io.github.audxius.pillar.ui.theme.StyleOverlay(settings.animateBackground && settings.animations) }
                 SharedTransitionLayout {
                     CompositionLocalProvider(LocalSharedScope provides this) {
                         PillarNavHost(nav, start = startRoute)
@@ -289,7 +293,7 @@ private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
             // Each tab has its own color, like a handheld's home-menu dock.
             // Grid keeps to ink and red instead of a color per tab.
             val grid = io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.GRID
-            val tabColor = if (grid) (if (selected) io.github.audxius.pillar.ui.theme.GridRed else io.github.audxius.pillar.ui.theme.GridInk) else tab.color
+            val tabColor = if (grid) (if (selected) io.github.audxius.pillar.ui.theme.GridRed else MaterialTheme.colorScheme.onBackground) else tab.color
             val bubble by animateColorAsState(if (selected) tabColor else tabColor.copy(alpha = 0.14f), label = "tabBubble")
             val glyph by animateColorAsState(if (selected) Color.White else tabColor, label = "tabGlyph")
             Column(

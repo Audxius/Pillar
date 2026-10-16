@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -168,6 +169,10 @@ private val WiiRim = Color(0xFFCBD3DA)
 val GridInk = Color(0xFF141414)
 val GridRed: Color @Composable get() = LocalPalette.current.primary
 val GridPaper = Color(0xFFF6F6F3)
+// Grid's dark variant: charcoal paper, light ink.
+val GridInkDark = Color(0xFFEDEDE8)
+val GridPaperDark = Color(0xFF141414)
+private val GridPanelDark = Color(0xFF1E1E1E)
 
 /**
  * Panel surface for the current style: fill, rim and highlight. [solid] puts an opaque base
@@ -225,14 +230,14 @@ fun Modifier.styledSurface(shape: Shape, strong: Boolean = false, solid: Boolean
 
         UiStyle.XMB -> this
             .clip(shape)
-            .base(Color(0xFF0B1424))
-            .background(Color.Black.copy(alpha = if (strong) 0.58f else 0.5f))
+            .base(if (dark) Color(0xFF0B1424) else Color(0xFFF2F5F9))
+            .background(if (dark) Color.Black.copy(alpha = if (strong) 0.58f else 0.5f) else Color.White.copy(alpha = if (strong) 0.82f else 0.74f))
             .drawWithContent {
                 drawContent()
                 // The XMB's thin highlight along the top edge.
-                drawLine(Color.White.copy(alpha = 0.28f), Offset(size.width * 0.06f, 0.5f), Offset(size.width * 0.94f, 0.5f), 1.dp.toPx())
+                drawLine(Color.White.copy(alpha = if (dark) 0.28f else 0.9f), Offset(size.width * 0.06f, 0.5f), Offset(size.width * 0.94f, 0.5f), 1.dp.toPx())
             }
-            .border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+            .border(1.dp, if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f), shape)
 
         UiStyle.WII -> this
             .shadow(if (strong) 8.dp else 4.dp, shape, ambientColor = Color(0xFF5A6B78), spotColor = Color(0xFF5A6B78))
@@ -245,8 +250,8 @@ fun Modifier.styledSurface(shape: Shape, strong: Boolean = false, solid: Boolean
             val sq = if (shape == CircleShape) shape else RoundedCornerShape(2.dp)
             this
                 .clip(sq)
-                .background(Color.White)
-                .border(if (strong) 3.dp else 2.dp, GridInk, sq)
+                .background(if (dark) GridPanelDark else Color.White)
+                .border(if (strong) 3.dp else 2.dp, if (dark) GridInkDark else GridInk, sq)
         }
     }
 }
@@ -280,7 +285,8 @@ fun primaryActionColors(): Pair<Brush, Color> {
             0f to Color(0xFFFFFFFF), 0.55f to Color(0xFFE3EAF4), 0.78f to Color(0xFF9DB0CB), 0.86f to Color(0xFFD5E1F1), 1f to Color(0xFFF7FAFF)
         ) to Color(0xFF071330)
         // XMB: a lit, see-through selection bar.
-        UiStyle.XMB -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.4f), Color.White.copy(alpha = 0.22f))) to Color.White
+        UiStyle.XMB -> if (LocalIsDark.current) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.4f), Color.White.copy(alpha = 0.22f))) to Color.White
+        else Brush.verticalGradient(listOf(lerp(LocalPalette.current.primary, Color.White, 0.15f), lerp(LocalPalette.current.primary, Color.Black, 0.15f))) to Color.White
         // Wii: a white channel button with Wii-blue lettering.
         UiStyle.WII -> Brush.verticalGradient(listOf(Color.White, Color(0xFFEAF0F4))) to Color(0xFF168FC7)
         UiStyle.GRID -> SolidBrush(GridRed) to Color.White
@@ -304,17 +310,20 @@ fun Modifier.primaryActionFinish(shape: Shape): Modifier = when (LocalStyle.curr
         }
         .border(1.dp, lerp(LocalPalette.current.tertiary, Color.Black, 0.45f), shape)
     UiStyle.Y2K -> this.border(1.5.dp, Brush.verticalGradient(listOf(Color.White, Color(0xFF6E86AA))), shape)
-    UiStyle.XMB -> this.border(1.5.dp, Color.White.copy(alpha = 0.8f), shape)
+    UiStyle.XMB -> this.border(1.5.dp, Color.White.copy(alpha = if (LocalIsDark.current) 0.8f else 0.6f), shape)
     UiStyle.WII -> this.border(3.dp, WiiBlue, shape)
-    UiStyle.GRID -> this.border(2.5.dp, GridInk, shape)
+    UiStyle.GRID -> this.border(2.5.dp, if (LocalIsDark.current) GridInkDark else GridInk, shape)
 }
 
 /** Things drawn outside the button's bounds: Grid's hard ink shadow. */
 @Composable
 fun Modifier.primaryActionOuter(shape: Shape): Modifier =
-    if (LocalStyle.current == UiStyle.GRID) this.drawBehind {
-        val o = shape.createOutline(size, layoutDirection, this)
-        translate(4.dp.toPx(), 4.dp.toPx()) { drawOutline(o, GridInk) }
+    if (LocalStyle.current == UiStyle.GRID) {
+        val shadow = if (LocalIsDark.current) Color.Black else GridInk
+        this.drawBehind {
+            val o = shape.createOutline(size, layoutDirection, this)
+            translate(4.dp.toPx(), 4.dp.toPx()) { drawOutline(o, shadow) }
+        }
     } else this
 
 /** The Play button's face: real liquid glass for Liquid Glass, the style's brush otherwise. */
@@ -350,13 +359,22 @@ fun chipColors(selected: Boolean): Triple<Brush, Color, Brush> {
         UiStyle.Y2K -> if (selected) Triple(SolidBrush(Cyan), Navy, SolidBrush(Color.White))
         else if (dark) Triple(SolidBrush(Navy.copy(alpha = 0.7f)), Color.White, SolidBrush(Cyan.copy(alpha = 0.45f)))
         else Triple(SolidBrush(Color.White.copy(alpha = 0.85f)), Navy, SolidBrush(Color(0xFF2C6FD1).copy(alpha = 0.5f)))
-        UiStyle.XMB -> if (selected) Triple(SolidBrush(Color.White.copy(alpha = 0.92f)), Color(0xFF0B1424), SolidBrush(Color.White))
-        else Triple(SolidBrush(Color.Black.copy(alpha = 0.48f)), Color.White, SolidBrush(Color.White.copy(alpha = 0.25f)))
+        UiStyle.XMB -> if (dark) {
+            if (selected) Triple(SolidBrush(Color.White.copy(alpha = 0.92f)), Color(0xFF0B1424), SolidBrush(Color.White))
+            else Triple(SolidBrush(Color.Black.copy(alpha = 0.48f)), Color.White, SolidBrush(Color.White.copy(alpha = 0.25f)))
+        } else {
+            val p = LocalPalette.current.primary
+            if (selected) Triple(SolidBrush(p), Color.White, SolidBrush(p))
+            else Triple(SolidBrush(Color.White.copy(alpha = 0.78f)), Color(0xFF1B2433), SolidBrush(Color.Black.copy(alpha = 0.1f)))
+        }
         UiStyle.WII -> if (selected) Triple(SolidBrush(WiiBlue), Color.White, SolidBrush(Color(0xFF1A9FD6)))
         else if (dark) Triple(SolidBrush(Color(0xFF2A3036)), Color.White, SolidBrush(Color(0xFF46505A)))
         else Triple(SolidBrush(Color.White), Color(0xFF4A5560), SolidBrush(WiiRim))
-        UiStyle.GRID -> if (selected) Triple(SolidBrush(GridInk), Color.White, SolidBrush(GridInk))
-        else Triple(SolidBrush(Color.White), GridInk, SolidBrush(GridInk))
+        UiStyle.GRID -> {
+            val ink = if (dark) GridInkDark else GridInk
+            val paper = if (dark) GridPanelDark else Color.White
+            if (selected) Triple(SolidBrush(ink), paper, SolidBrush(ink)) else Triple(SolidBrush(paper), ink, SolidBrush(ink))
+        }
     }
 }
 
@@ -370,14 +388,16 @@ private fun aeroOrb(c: Color): Brush = Brush.verticalGradient(
 
 /** Full-screen backdrop for the current style. */
 @Composable
-fun StyleBackdrop(primary: Color, secondary: Color, tertiary: Color, animate: Boolean) {
+fun StyleBackdrop(primary: Color, secondary: Color, tertiary: Color, animate: Boolean) = androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().graphicsLayer()) {
     when (LocalStyle.current) {
-        UiStyle.GLASS, UiStyle.LUNA, UiStyle.POCKET -> GlassMesh(primary, secondary, tertiary, animate)
-        UiStyle.AERO -> AeroScene(animate)
+        // Glass styles keep their wallpaper still: every glass surface re-blurs whatever is behind
+        // it, so a moving wallpaper made all of them redraw every frame. Motion lives in StyleOverlay.
+        UiStyle.GLASS, UiStyle.LUNA, UiStyle.POCKET -> GlassMesh(primary, secondary, tertiary, animate = false)
+        UiStyle.AERO -> AeroScene()
         UiStyle.Y2K -> ConsoleMenu(animate)
-        UiStyle.XMB -> XmbWave(LocalPalette.current.primary, animate)
+        UiStyle.XMB -> XmbWave(LocalPalette.current.primary, animate, LocalIsDark.current)
         UiStyle.WII -> WiiStripes(WiiBlue)
-        UiStyle.GRID -> GridPaperBackdrop(GridRed)
+        UiStyle.GRID -> GridPaperBackdrop(GridRed, LocalIsDark.current)
     }
 }
 
@@ -423,11 +443,10 @@ private fun GlassMesh(a: Color, b: Color, c: Color, animate: Boolean) {
  * lush glossy field, glass water drops and rising bubbles. Sky, grass and accents follow the palette.
  */
 @Composable
-private fun AeroScene(animate: Boolean) {
+private fun AeroScene() {
     val p = LocalPalette.current
     val dark = LocalIsDark.current
-    val sway = drift(animate, 22000, "aeroSway")
-    val rise = drift(animate, 20000, "aeroRise", linear = true)
+    val sway = 0.5f
     val blades = remember { Random(5).let { r -> List(160) { floatArrayOf(r.nextFloat(), r.nextFloat(), r.nextFloat()) } } }
     val drops = remember { Random(11).let { r -> List(8) { floatArrayOf(r.nextFloat(), r.nextFloat(), r.nextFloat()) } } }
     Canvas(Modifier.fillMaxSize()) {
@@ -500,7 +519,19 @@ private fun AeroScene(animate: Boolean) {
             drawOval(Color.White.copy(alpha = 0.85f), topLeft = Offset(c.x - r * 0.55f, c.y - r * 0.6f), size = Size(r * 0.55f, r * 0.35f))
             drawArc(Color.White.copy(alpha = 0.5f), 20f, 70f, false, topLeft = Offset(c.x - r * 0.7f, c.y - r * 0.7f), size = Size(r * 1.4f, r * 1.4f), style = Stroke(r * 0.12f))
         }
-        // Bubbles drifting up.
+    }
+}
+
+/**
+ * Motion drawn above the wallpaper but outside what glass surfaces refract, so it never makes them
+ * redraw: Aero's rising bubbles.
+ */
+@Composable
+fun StyleOverlay(animate: Boolean) {
+    if (LocalStyle.current != UiStyle.AERO || !animate) return
+    val rise = drift(true, 20000, "aeroRise", linear = true)
+    Canvas(Modifier.fillMaxSize()) {
+        val w = size.width; val h = size.height
         for (i in 0 until 7) {
             val t = (rise + i * 0.143f) % 1f
             val x = w * (0.08f + 0.84f * ((i * 0.37f) % 1f)) + w * 0.02f * sin((t * 4 + i) * PI.toFloat())
@@ -578,12 +609,17 @@ private fun DrawScope.drawIsoCube(c: Offset, s: Float, edge: Color, dark: Boolea
 // ---- XMB (PSP / PS3) ---------------------------------------------------------------------------
 
 @Composable
-private fun XmbWave(tint: Color, animate: Boolean) {
+private fun XmbWave(tint: Color, animate: Boolean, dark: Boolean) {
     val t = drift(animate, 26000, "xmb", linear = true)
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height
         // Deep, slightly tinted gradient, brighter toward the middle like the XMB.
-        drawRect(Brush.verticalGradient(listOf(lerp(tint, Color.Black, 0.72f), lerp(tint, Color.Black, 0.45f), lerp(tint, Color.Black, 0.8f))))
+        drawRect(
+            if (dark) Brush.verticalGradient(listOf(lerp(tint, Color.Black, 0.72f), lerp(tint, Color.Black, 0.45f), lerp(tint, Color.Black, 0.8f)))
+            // The PSP's light months: a pale wash with the wave drawn in the month's color.
+            else Brush.verticalGradient(listOf(lerp(tint, Color.White, 0.72f), lerp(tint, Color.White, 0.5f), lerp(tint, Color.White, 0.85f)))
+        )
+        val ink = if (dark) Color.White else lerp(tint, Color.White, 0.95f)
         // High enough to sweep behind the logo instead of hiding behind the carousel.
         val mid = h * 0.3f
         val phase = t * 2 * PI.toFloat()
@@ -595,7 +631,7 @@ private fun XmbWave(tint: Color, animate: Boolean) {
         for (i in 0..steps) { val x = w * i / steps; if (i == 0) band.moveTo(x, y(x, 1, 0f) - h * 0.05f) else band.lineTo(x, y(x, 1, 0f) - h * 0.05f) }
         for (i in steps downTo 0) { val x = w * i / steps; band.lineTo(x, y(x, 1, 0.6f) + h * 0.06f) }
         band.close()
-        drawPath(band, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0f)), startY = mid - h * 0.15f, endY = mid + h * 0.15f))
+        drawPath(band, Brush.verticalGradient(listOf(ink.copy(alpha = 0f), ink.copy(alpha = if (dark) 0.22f else 0.55f), ink.copy(alpha = 0f)), startY = mid - h * 0.15f, endY = mid + h * 0.15f))
         for (j in 0 until 7) {
             val line = Path()
             for (i in 0..steps) {
@@ -603,7 +639,7 @@ private fun XmbWave(tint: Color, animate: Boolean) {
                 val yy = y(x, 1 + j % 2, j * 0.35f)
                 if (i == 0) line.moveTo(x, yy) else line.lineTo(x, yy)
             }
-            drawPath(line, Color.White.copy(alpha = 0.18f + 0.06f * (j % 3)), style = Stroke(1.2.dp.toPx()))
+            drawPath(line, ink.copy(alpha = (if (dark) 0.18f else 0.45f) + 0.06f * (j % 3)), style = Stroke(1.2.dp.toPx()))
         }
     }
 }
@@ -632,13 +668,13 @@ private fun WiiStripes(accent: Color) {
 // ---- Grid (8-bit era box art) -----------------------------------------------------------------
 
 @Composable
-private fun GridPaperBackdrop(accent: Color) {
+private fun GridPaperBackdrop(accent: Color, dark: Boolean) {
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height
-        drawRect(GridPaper)
+        drawRect(if (dark) GridPaperDark else GridPaper)
         // The black grid the boxes were known for: even squares across the whole screen.
         val cell = w / 9f
-        val line = GridInk.copy(alpha = 0.78f)
+        val line = if (dark) GridInkDark.copy(alpha = 0.28f) else GridInk.copy(alpha = 0.78f)
         val stroke = 1.6.dp.toPx()
         var x = cell / 2
         while (x < w) { drawLine(line, Offset(x, 0f), Offset(x, h), stroke); x += cell }

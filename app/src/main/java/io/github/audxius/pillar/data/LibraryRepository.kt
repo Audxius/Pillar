@@ -20,6 +20,10 @@ enum class MediaKind(val folders: List<String>) {
     COVER(listOf("covers", "3dboxes", "miximages")),
     HERO(listOf("fanart", "screenshots", "titlescreens")),
     LOGO(listOf("marquees")),
+    SNAP(listOf("screenshots", "titlescreens")),
+    BACK(listOf("backcovers")),
+    BOX3D(listOf("3dboxes")),
+    PHYSICAL(listOf("physicalmedia")),
 }
 
 class LibraryRepository(
@@ -284,6 +288,25 @@ class LibraryRepository(
         art?.sgdbGrid?.let(::add)
         art?.sgdbSquare?.let(::add)
     }.distinct()
+
+    /** Screenshots first (16:9 tiles), then wide art, then covers. */
+    fun snapCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
+        addAll(mediaFor(game, MediaKind.SNAP))
+        if (settings.onlineCovers) {
+            art?.snap?.let(::add)
+            if (art?.libretroChecked != true) libretroUrl(game, OnlineArt.SNAP)?.let(::add)
+            art?.snap?.let { add(it.replace("/Named_Snaps/", "/Named_Titles/")) }
+        }
+        art?.sgdbHero?.let(::add)
+        addAll(coverCandidates(game, settings, user, art))
+    }.distinct()
+
+    /** ES-DE's extra box media for the shelf: back cover, 3D box and the disc or cartridge itself. */
+    fun shelfMedia(game: Game): Triple<String?, String?, String?> = Triple(
+        mediaFor(game, MediaKind.BACK).firstOrNull(),
+        mediaFor(game, MediaKind.BOX3D).firstOrNull(),
+        mediaFor(game, MediaKind.PHYSICAL).firstOrNull(),
+    )
 
     /** Wide background art for heroes and game pages. */
     fun heroCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {

@@ -75,6 +75,8 @@ data class RommRom(
     val regions: List<String> = emptyList(),
     val languages: List<String> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null,
+    /** ScreenScraper media RomM stored for the game (spine, back cover, 3D box, disc/cartridge). */
+    @SerialName("ss_metadata") val ss: RommSsMedia? = null,
 ) {
     val title: String get() = name?.takeIf { it.isNotBlank() } ?: fsNameNoExt ?: fsName
     val isMultiFile: Boolean get() = hasMultipleFiles ?: multi ?: false
@@ -309,3 +311,11 @@ data class RommSave(
 ) {
     val updatedMillis: Long get() = updatedAt?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() } ?: 0L
 }
+
+@Serializable
+data class RommSsMedia(
+    @SerialName("box2d_side_path") val sidePath: String? = null,
+    @SerialName("box2d_back_path") val backPath: String? = null,
+    @SerialName("box3d_path") val box3dPath: String? = null,
+    @SerialName("physical_path") val physicalPath: String? = null,
+)

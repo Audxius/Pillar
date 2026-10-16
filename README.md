@@ -56,8 +56,9 @@ Android 8.0 or newer.
   cubes, HUD panels, chrome buttons); XMB (the PSP/PS3 wave, in its monthly colors); Wii (white
   pinstripes and Wii-blue rims); and Grid (8-bit era box art: a black grid on white, one bold
   color). Menu sounds to match each one.
-- **Five ways to browse.** Covers, a 3D cover flow, a shelf of game cases whose disc or cartridge
-  slides out, pages of banners like the Homebrew Channel, or a vertical list.
+- **Five ways to browse.** Covers, a big 3D cover flow, a shelf of game cases (with real spine,
+  back-cover, 3D box and disc/cartridge art from RomM's ScreenScraper media or ES-DE's media
+  folder), pages of screenshot banners like the Homebrew Channel, or a vertical list.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -93,8 +94,8 @@ Android 8.0 or newer.
   - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
     blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
-  - Widget home layout: continue playing, platforms, favorites, recently added, new on RomM,
-    random pick and stats, which you can toggle and reorder.
+  - Widget home layout: continue playing, platforms, favorites, recently added, random pick,
+    stats and your whole library by recently played, which you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.
   - Export and import all of it as a backup file.

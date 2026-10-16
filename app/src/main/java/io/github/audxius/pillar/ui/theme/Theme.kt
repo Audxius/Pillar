@@ -247,10 +247,15 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         val glassDark = settings.uiStyle == UiStyle.GLASS && dark
         val finalScheme = when {
             // Grid is strictly ink, paper and one red.
-            settings.uiStyle == UiStyle.GRID -> scheme.copy(
+            settings.uiStyle == UiStyle.GRID && !dark -> scheme.copy(
                 background = GridPaper, onBackground = GridInk, surface = Color.White, onSurface = GridInk, onSurfaceVariant = Color(0xFF4A4A4A),
                 primary = palette.primary, onPrimary = Color.White, secondary = GridInk, tertiary = GridInk,
                 surfaceContainerHigh = Color.White, surfaceContainer = Color.White, outline = GridInk, outlineVariant = GridInk,
+            )
+            settings.uiStyle == UiStyle.GRID -> scheme.copy(
+                background = GridPaperDark, onBackground = GridInkDark, surface = Color(0xFF1E1E1E), onSurface = GridInkDark, onSurfaceVariant = Color(0xFFB5B5B0),
+                primary = palette.primary, onPrimary = Color.White, secondary = GridInkDark, tertiary = GridInkDark,
+                surfaceContainerHigh = Color(0xFF1E1E1E), surfaceContainer = Color(0xFF1E1E1E), outline = GridInkDark, outlineVariant = GridInkDark,
             )
             glassDark -> scheme.copy(onSurfaceVariant = Color(0xFFDAD6E8))
             else -> scheme

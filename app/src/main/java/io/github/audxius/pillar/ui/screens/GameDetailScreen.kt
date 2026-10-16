@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.rounded.CloudUpload
@@ -301,8 +302,7 @@ private fun GameDetail(game: Game, src: String, openEmulators: Boolean) {
                 }
             }
 
-            GameSaves(game)
-            if (settings.rommConfigured && rommId != null) RommSaves(game, rommId)
+            GameSaves(game, rommId)
             if (settings.raConfigured) AchievementsSection(game)
 
             Spacer(Modifier.height(16.dp))
@@ -506,16 +506,23 @@ private fun AchievementsSection(game: Game) {
 }
 
 /** This game's save files and states from the synced folders. */
+/**
+ * Saves on this device and on RomM in one card, folded to a one-line summary so achievements
+ * aren't pushed off the page; tap to see and use them.
+ */
 @Composable
-private fun GameSaves(game: Game) {
+private fun GameSaves(game: Game, rommId: Int?) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
     val nav = LocalNav.current
-    if (settings.savesDir == null && settings.statesDir == null) return
     val last by graph.saveSync.last.collectAsStateWithLifecycle()
     var files by remember { mutableStateOf<List<io.github.audxius.pillar.data.LocalSaveFile>>(emptyList()) }
     var states by remember { mutableStateOf<Map<String, io.github.audxius.pillar.data.SyncFileState>>(emptyMap()) }
+    var refresh by remember { mutableStateOf(0) }
+    val remote = rememberRommSaves(if (settings.rommConfigured) rommId else null, refresh).orEmpty()
+    var open by remember { mutableStateOf(false) }
     LaunchedEffect(game.id, last) {
+        if (settings.savesDir == null && settings.statesDir == null) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val stem = game.baseName.lowercase()
             val mine = graph.saveSync.listLocal().filter {
@@ -526,14 +533,31 @@ private fun GameSaves(game: Game) {
             states = graph.saveSync.fileStates(mine)
         }
     }
-    if (files.isEmpty()) return
-    Spacer(Modifier.height(20.dp))
-    Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Saves", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) { Text("Manage") }
+    if (files.isEmpty() && remote.isEmpty()) return
+    val synced = files.isNotEmpty() && files.all { states[it.key] == io.github.audxius.pillar.data.SyncFileState.SYNCED }
+    val summary = listOfNotNull(
+        files.size.takeIf { it > 0 }?.let { "$it on this device" + if (synced) " · synced" else "" },
+        remote.size.takeIf { it > 0 }?.let { n -> "$n on RomM" + remote.map { it.slot }.distinct().size.let { s -> if (s > 1) " in $s slots" else "" } },
+    ).joinToString(" · ")
+    val chevron by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, label = "savesChevron")
+    Spacer(Modifier.height(16.dp))
+    Glass(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().tappable { open = !open }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Saves", style = MaterialTheme.typography.titleMedium)
+                Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(chevron))
         }
-        files.forEach { f -> SaveFileRow(f, states[f.key], onDelete = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) }
+        androidx.compose.animation.AnimatedVisibility(open) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                if (files.isNotEmpty()) {
+                    files.forEach { f -> SaveFileRow(f, states[f.key], onDelete = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) }
+                    TextButton(onClick = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) { Text("Manage saves") }
+                }
+                if (remote.isNotEmpty()) RommSaveList(game, remote) { refresh++ }
+            }
+        }
     }
 }
 

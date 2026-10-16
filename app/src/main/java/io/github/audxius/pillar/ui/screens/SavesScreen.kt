@@ -552,37 +552,35 @@ private fun BackupsDialog(onDismiss: () -> Unit) {
  * The game's saves on RomM, by slot. RetroArch sync always uses the newest save in the
  * "autosave" slot, so that one is the main save; any other can be played from or made main.
  */
+/** A game's saves on RomM (null while loading or when the server can't list them). */
 @Composable
-fun RommSaves(game: Game, rommId: Int) {
+fun rememberRommSaves(rommId: Int?, refresh: Int): List<RommSave>? {
+    val graph = LocalGraph.current
+    var saves by remember(rommId) { mutableStateOf<List<RommSave>?>(null) }
+    LaunchedEffect(rommId, refresh) {
+        if (rommId != null) saves = runCatching { graph.romm.saves(rommId) }.getOrNull()
+    }
+    return saves
+}
+
+/** RomM's saves for a game, by slot, to play from or make the main save. */
+@Composable
+fun RommSaveList(game: Game, list: List<RommSave>, onChanged: () -> Unit) {
     val graph = LocalGraph.current
     val snackbar = LocalSnackbar.current
     val launch = io.github.audxius.pillar.ui.rememberGameLauncher()
-    var saves by remember { mutableStateOf<List<RommSave>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var refresh by remember { mutableStateOf(0) }
     var choosing by remember { mutableStateOf<RommSave?>(null) }
-    LaunchedEffect(rommId, refresh) {
-        runCatching { graph.romm.saves(rommId) }.onSuccess { saves = it; error = null }.onFailure { error = it.message }
-    }
-    val list = saves ?: return
-    if (list.isEmpty() && error == null) return
     // Newest first in each slot; the main save is the head of "autosave" (or of the unslotted ones).
     val bySlot = list.sortedByDescending { it.updatedMillis }.groupBy { it.slot }
     val mainId = (bySlot["autosave"] ?: bySlot[null])?.firstOrNull()?.id
-    Spacer(Modifier.height(16.dp))
-    Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
-        Text("Saves on RomM", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Play from any of them, or make one your main save (the one RetroArch syncs).",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    Column {
+        Text("ON ROMM", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp))
         bySlot.entries.sortedBy { (slot, _) -> if (slot == "autosave") "" else slot ?: "~" }.forEach { (slot, versions) ->
             var expanded by remember(slot) { mutableStateOf(false) }
             Text(
-                when (slot) { "autosave" -> "Main slot"; null -> "No slot"; else -> slot }.uppercase(),
-                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+                when (slot) { "autosave" -> "Main slot"; null -> "No slot"; else -> slot },
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
             )
             (if (expanded) versions else versions.take(1)).forEach { s ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -633,7 +631,7 @@ fun RommSaves(game: Game, rommId: Int) {
                     choosing = null
                     graph.scope.launch(Dispatchers.Main) {
                         runCatching { graph.useRommSave(game, s); graph.saveSync.sync() }
-                            .onSuccess { snackbar.showSnackbar("That save is now your main save"); refresh++ }
+                            .onSuccess { snackbar.showSnackbar("That save is now your main save"); onChanged() }
                             .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't use that save") }
                     }
                 }) { Text("Make it main") }
