@@ -116,7 +116,7 @@ import io.github.audxius.pillar.ui.theme.styledSurface
 import kotlinx.coroutines.launch
 
 @Composable
-fun GameDetailScreen(id: String, src: String) {
+fun GameDetailScreen(id: String, src: String, openEmulators: Boolean = false) {
     val graph = LocalGraph.current
     val nav = LocalNav.current
     val all by graph.allGames.collectAsStateWithLifecycle()
@@ -137,11 +137,11 @@ fun GameDetailScreen(id: String, src: String) {
         }
         return
     }
-    GameDetail(game, src)
+    GameDetail(game, src, openEmulators)
 }
 
 @Composable
-private fun GameDetail(game: Game, src: String) {
+private fun GameDetail(game: Game, src: String, openEmulators: Boolean) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
     val user = LocalUserData.current
@@ -163,10 +163,11 @@ private fun GameDetail(game: Game, src: String) {
     val fav = game.id in user.favorites
     val command = remember(game.id, settings, user) { graph.launcher.selectCommand(game, settings, user) }
 
-    var emuSheet by remember { mutableStateOf(false) }
+    var emuSheet by remember { mutableStateOf(openEmulators) }
     var renaming by remember { mutableStateOf(false) }
     var confirmHide by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var resetRa by remember { mutableStateOf(false) }
     val links by graph.rommLinks.collectAsStateWithLifecycle()
     val rommId = game.rommId ?: links[game.id]
     val noAch by graph.ra.noAchievements.collectAsStateWithLifecycle()
@@ -215,6 +216,12 @@ private fun GameDetail(game: Game, src: String) {
                         text = { Text("Hide game") }, leadingIcon = { Icon(Icons.Rounded.VisibilityOff, null) },
                         onClick = { menu = false; confirmHide = true },
                     )
+                    if (settings.raConfigured && user.raIds[game.id] != null) {
+                        DropdownMenuItem(
+                            text = { Text("Reset achievements…") }, leadingIcon = { Icon(Icons.Rounded.EmojiEvents, null) },
+                            onClick = { menu = false; resetRa = true },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Delete…") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) },
                         onClick = { menu = false; deleting = true },
@@ -268,7 +275,9 @@ private fun GameDetail(game: Game, src: String) {
                     "Play", Icons.Rounded.PlayArrow, Modifier.fillMaxWidth().height(62.dp),
                     onMenu = { emuSheet = true },
                 ) {
-                    if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
+                    // No emulator known to work yet: choose one rather than launch blind.
+                    if (command == null) emuSheet = true
+                    else if (settings.confirmLaunch) confirmLaunch = true else launch(game, null)
                 }
             }
             if (dl is DownloadState.Failed) {
@@ -293,7 +302,7 @@ private fun GameDetail(game: Game, src: String) {
             }
 
             GameSaves(game)
-            rommId?.let { RommInfo(it) }
+            if (settings.rommConfigured && rommId != null) RommSaves(game, rommId)
             if (settings.raConfigured) AchievementsSection(game)
 
             Spacer(Modifier.height(16.dp))
@@ -307,6 +316,7 @@ private fun GameDetail(game: Game, src: String) {
         }
     }
 
+    if (resetRa) ResetRaProgressDialog { resetRa = false }
     if (deleting) DeleteGameDialog(game, rommId, onDone = { deleted -> deleting = false; if (deleted) nav.popBackStack() })
     if (emuSheet) {
         EmulatorSheet(
@@ -396,37 +406,6 @@ private fun ActionButton(
 }
 
 @Composable
-private fun RommInfo(rommId: Int) {
-    val graph = LocalGraph.current
-    var rom by remember { mutableStateOf<RommRom?>(null) }
-    LaunchedEffect(rommId) { rom = runCatching { graph.romm.rom(rommId) }.getOrNull() }
-    val r = rom ?: return
-    Spacer(Modifier.height(20.dp))
-    Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
-        Text("About", style = MaterialTheme.typography.titleMedium)
-        val facts = listOfNotNull(
-            r.releaseYear?.toString(),
-            r.metadatum?.genres?.take(3)?.joinToString(", ")?.ifBlank { null },
-            r.metadatum?.companies?.firstOrNull(),
-            r.metadatum?.averageRating?.let { "★ ${"%.0f".format(it)}" },
-        )
-        if (facts.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text(facts.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        }
-        r.summary?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(8.dp))
-            var expanded by remember { mutableStateOf(false) }
-            Text(
-                it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = if (expanded) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.tappable { expanded = !expanded },
-            )
-        }
-    }
-}
-
-@Composable
 private fun AchievementsSection(game: Game) {
     val graph = LocalGraph.current
     val user = LocalUserData.current
@@ -477,7 +456,6 @@ private fun AchievementsSection(game: Game) {
             p == null -> Shimmer(Modifier.fillMaxWidth().height(60.dp))
             else -> {
                 AchievementList(p)
-                RaGameActions(p.id)
             }
         }
     }

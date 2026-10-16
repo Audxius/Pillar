@@ -399,6 +399,17 @@ class SaveSync(
             ?: throw IOException("Can't write $name")
     }
 
+    /**
+     * Puts a save file in place as this device's copy of [key] (e.g. "saves/Snes9x/Game.srm"),
+     * backing up whatever was there. The next sync then uploads it like any local change.
+     */
+    suspend fun installSave(key: String, from: File) = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val existing = listLocal().firstOrNull { it.key.equals(key, true) }
+            writeLocal(key, from, existing)
+        }
+    }
+
     private fun backup(f: LocalSaveFile) {
         val stamp = SimpleDateFormat("yyMMdd-HHmmss", Locale.US).format(Date())
         val dest = File(backupDir, "${f.key}-$stamp").apply { parentFile?.mkdirs() }

@@ -65,6 +65,8 @@ class GameLauncher(private val context: Context, private val catalog: SystemCata
 
     /** RetroArch core folders seen in the saves/states folders (see SaveSync.coreFolders). */
     @Volatile var usedCores: Set<String> = emptySet()
+    /** Cores the user told Pillar are installed. */
+    @Volatile var confirmedCores: Set<String> = emptySet()
 
     fun status(cmd: EmuCommand): Status {
         if (cmd.raw.contains("%ANDROIDAPP%")) return Status.READY
@@ -73,7 +75,7 @@ class GameLauncher(private val context: Context, private val catalog: SystemCata
         // Android doesn't let other apps see RetroArch's cores, so a core counts as installed once
         // its save folder exists. A missing core makes RetroArch hang on a black screen.
         val core = retroArchCore(cmd)
-        if (core != null && usedCores.isNotEmpty() && !coreUsed(core, cmd.label)) return Status.CORE_UNSEEN
+        if (core != null && core !in confirmedCores && !coreUsed(core, cmd.label)) return Status.CORE_UNSEEN
         return Status.READY
     }
 
@@ -97,15 +99,19 @@ class GameLauncher(private val context: Context, private val catalog: SystemCata
         val appCommands = all.filter { it.raw.contains("%ANDROIDAPP%") }
         if (isAppFile || (appCommands.isNotEmpty() && appCommands.size == all.size)) return appCommands.firstOrNull()
         val emulators = all - appCommands.toSet()
-        return emulators.firstOrNull { isCommandAvailable(it) } ?: emulators.firstOrNull()
+        // Only ever something known to work: otherwise Play asks which emulator to use (a RetroArch
+        // core that isn't installed hangs on a black screen).
+        return emulators.firstOrNull { isCommandAvailable(it) }
     }
 
     /** Per-game override, then the system default, then [automaticCommand]. */
     fun selectCommand(game: Game, settings: AppSettings, user: UserData): EmuCommand? {
         val all = commandsFor(game.system, settings)
         if (all.isEmpty()) return null
-        user.emulatorOverride[game.id]?.let { label -> all.firstOrNull { it.label == label }?.let { return it } }
-        settings.defaultEmulators[game.system]?.let { label -> all.firstOrNull { it.label == label }?.let { return it } }
+        // Picks of a core that isn't known to be installed (made before Pillar checked) are skipped.
+        fun usable(c: EmuCommand) = status(c) != Status.CORE_UNSEEN
+        user.emulatorOverride[game.id]?.let { label -> all.firstOrNull { it.label == label && usable(it) }?.let { return it } }
+        settings.defaultEmulators[game.system]?.let { label -> all.firstOrNull { it.label == label && usable(it) }?.let { return it } }
         return automaticCommand(game.system, settings, game.fileName)
     }
 

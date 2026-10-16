@@ -58,6 +58,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -181,11 +182,11 @@ fun LibraryScreen() {
 
 /** A console in the library: a tinted collage of its covers, its controller icon, full name and game count. */
 @Composable
-private fun PlatformCard(system: String, games: List<Game>, onClick: () -> Unit) {
+fun PlatformCard(system: String, games: List<Game>, modifier: Modifier = Modifier.fillMaxWidth(), onClick: () -> Unit) {
     val graph = LocalGraph.current
     val user = LocalUserData.current
     val meta = graph.catalog.meta(system)
-    val color = if (io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.POCKET) io.github.audxius.pillar.ui.theme.Dmg1 else systemColor(system)
+    val color = if (io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.GRID) io.github.audxius.pillar.ui.theme.GridInk else systemColor(system)
     val corner = LocalCorner.current
     val shape = RoundedCornerShape(corner * 0.8f)
     // The games you played last stand in for the console; otherwise the first few alphabetically.
@@ -193,7 +194,7 @@ private fun PlatformCard(system: String, games: List<Game>, onClick: () -> Unit)
         games.sortedWith(compareByDescending<Game> { user.lastPlayed[it.id] ?: 0L }.thenBy { it.title.lowercase() }).take(4)
     }
     Box(
-        Modifier.fillMaxWidth().aspectRatio(0.9f)
+        modifier.aspectRatio(0.9f)
             .styledSurface(shape)
             .tappable(shape, onClick = onClick),
     ) {
@@ -443,6 +444,29 @@ fun EmulatorSheet(
     }
     val ready = commands.filter { it.second == GameLauncher.Status.READY }
     val unseen = commands.filter { it.second == GameLauncher.Status.CORE_UNSEEN }
+    var showUnseen by remember { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf<io.github.audxius.pillar.data.EmuCommand?>(null) }
+    val scope = rememberCoroutineScope()
+    confirming?.let { cmd ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text("Is ${cmd.label} installed?") },
+            text = {
+                Text(
+                    "Check RetroArch → Load Core. If ${cmd.label} isn't listed, install it from RetroArch → Online Updater → Core Downloader first; " +
+                        "launching a core that isn't there leaves RetroArch on a black screen."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    retroArchCore(cmd)?.let { core -> scope.launch { graph.store.update { it.copy(confirmedCores = it.confirmedCores + core) } } }
+                    confirming = null
+                    onPick(cmd.label)
+                }) { Text("It's installed") }
+            },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
+        )
+    }
     val missing = commands.filter { it.second == GameLauncher.Status.APP_MISSING }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
@@ -464,15 +488,29 @@ fun EmulatorSheet(
                 }
                 EmuRow(cmd.label, sub, cmd.label == selected, available = true) { onPick(cmd.label) }
             }
+            if (ready.isEmpty() && unseen.isNotEmpty()) item {
+                Text(
+                    "Pillar doesn't know which RetroArch cores you have yet: Android doesn't let apps see them. Show the cores and pick the one you've installed.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+            // Cores Pillar hasn't seen you use stay folded away: picking one that isn't installed
+            // leaves RetroArch on a black screen, so each one is confirmed first.
             if (unseen.isNotEmpty()) {
                 item {
-                    SheetLabel(
-                        "Other RetroArch cores",
-                        "Pillar hasn't seen saves from these yet, so they may not be installed. A missing core leaves RetroArch on a black screen: install it first in RetroArch → Online Updater → Core Downloader.",
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().tappable(RoundedCornerShape(16.dp)) { showUnseen = !showUnseen }.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (showUnseen) "Hide other RetroArch cores" else "Show other RetroArch cores (${unseen.size})",
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
-                items(unseen, key = { "u" + it.first.label + it.first.custom }) { (cmd, _) ->
-                    EmuRow(cmd.label, "Install in RetroArch first", cmd.label == selected, available = false) { onPick(cmd.label) }
+                if (showUnseen) items(unseen, key = { "u" + it.first.label + it.first.custom }) { (cmd, _) ->
+                    EmuRow(cmd.label, "Not seen yet: only if it's installed", cmd.label == selected, available = false) { confirming = cmd }
                 }
             }
             if (missing.isNotEmpty()) {

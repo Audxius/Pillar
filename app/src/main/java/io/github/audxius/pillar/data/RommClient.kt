@@ -213,14 +213,18 @@ class RommClient(private val http: OkHttpClient, private val settings: () -> App
 
     fun host(): String? = runCatching { base().host }.getOrNull()
 
-    /** A game's soundtrack files (RomM 5.4+); empty when there are none or the server is older. */
-    suspend fun soundtracks(romId: Int): List<RommTrack> = runCatching {
-        PillarJson.decodeFromJsonElement(ListSerializer(RommTrack.serializer()), get { addPathSegments("api/roms/$romId/soundtracks/metadata") })
-    }.getOrDefault(emptyList())
+    /** Every save RomM keeps for a game, across slots and versions. */
+    suspend fun saves(romId: Int): List<RommSave> =
+        PillarJson.decodeFromJsonElement(ListSerializer(RommSave.serializer()), get { addPathSegments("api/saves"); addQueryParameter("rom_id", romId.toString()) })
 
-    /** Streaming address for one soundtrack file, plus the auth header it needs. */
-    fun trackUrl(track: RommTrack): Pair<String, String?> =
-        base().newBuilder().addPathSegments("api/roms/${track.fileId}/files/content").addPathSegment(track.fileName).build().toString() to authHeader()
+    /** Downloads one save's file. */
+    suspend fun downloadSave(save: RommSave, into: java.io.File) = withContext(Dispatchers.IO) {
+        val url = base().newBuilder().addPathSegments("api/saves/${save.id}/content").build()
+        http.newCall(Request.Builder().url(url).apply { authHeader()?.let { header("Authorization", it) } }.build()).execute().use { r ->
+            if (!r.isSuccessful) throw RommException("Couldn't download that save (HTTP ${r.code})")
+            into.outputStream().use { out -> r.body?.byteStream()?.copyTo(out) }
+        }
+    }
 
     /** Deletes games from RomM, and their files on the server so a rescan doesn't bring them back. */
     suspend fun deleteRoms(ids: List<Int>, fromDisk: Boolean) = withContext(Dispatchers.IO) {
@@ -290,12 +294,18 @@ class RommClient(private val http: OkHttpClient, private val settings: () -> App
     }
 }
 
+/** A save on RomM. Saves live in named slots; "autosave" is the one RetroArch sync uses. */
 @Serializable
-data class RommTrack(
-    @SerialName("file_id") val fileId: Int,
-    @SerialName("file_name") val fileName: String,
-    @SerialName("track_meta") val meta: RommTrackMeta? = null,
-)
-
-@Serializable
-data class RommTrackMeta(val title: String? = null, val track: Int? = null)
+data class RommSave(
+    val id: Int,
+    @SerialName("rom_id") val romId: Int = 0,
+    @SerialName("file_name") val fileName: String = "",
+    @SerialName("file_extension") val extension: String = "",
+    @SerialName("file_size_bytes") val size: Long = 0,
+    val emulator: String? = null,
+    val slot: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    val labels: List<String> = emptyList(),
+) {
+    val updatedMillis: Long get() = updatedAt?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() } ?: 0L
+}

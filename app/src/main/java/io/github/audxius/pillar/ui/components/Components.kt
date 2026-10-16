@@ -118,9 +118,10 @@ import kotlinx.coroutines.withContext
 val LocalSharedScope = compositionLocalOf<SharedTransitionScope?> { null }
 val LocalNavScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
 
+/** Tile shape. Box is 2:3, the shape of SteamGridDB covers and close to most real game boxes. */
 fun CoverShape.ratio(): Float = when (this) {
     CoverShape.NATURAL -> 0.75f
-    CoverShape.BOX -> 0.75f
+    CoverShape.BOX -> 2f / 3f
     CoverShape.SQUARE -> 1f
     CoverShape.WIDE -> 4f / 3f
 }
@@ -140,6 +141,8 @@ fun Modifier.sharedCover(key: String?): Modifier {
 fun Modifier.tappable(
     shape: Shape? = null,
     onLongClick: (() -> Unit)? = null,
+    /** No select sound (back buttons get the "back" sound from navigation instead). */
+    silent: Boolean = false,
     onClick: () -> Unit,
 ): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
@@ -169,7 +172,7 @@ fun Modifier.tappable(
             interactionSource = interaction,
             indication = ripple(),
             onLongClick = onLongClick?.let { { feedback(); it() } },
-            onClick = { feedback(); onClick() },
+            onClick = { if (!silent) feedback(); onClick() },
         )
 }
 
@@ -424,7 +427,7 @@ fun GameCover(
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val cover = rememberCoverSources(game)
-    val squareArt = if (preferSquare) rememberArt(game)?.let { a -> (if (settings.noLogoCovers) a.sgdbSquareClean else null) ?: a.sgdbSquare } else null
+    val squareArt = if (preferSquare) rememberArt(game)?.sgdbSquare else null
     val sources = remember(cover, squareArt) { listOfNotNull(squareArt) + cover }
     val title = gameTitle(game)
     val natural = ratio == null && settings.coverShape == CoverShape.NATURAL
@@ -436,7 +439,7 @@ fun GameCover(
     Box(modifier.aspectRatio(r).sharedCover(sharedKey).clip(shape)) {
         // Uniform tiles: art close to the tile's shape fills it (a barely visible trim); art of a
         // clearly different shape is shown whole, framed over a blurred copy of itself.
-        val fill = settings.coverCrop || (known != null && (natural || kotlin.math.abs(kotlin.math.ln(known / target)) < 0.16f))
+        val fill = settings.coverCrop || (known != null && (natural || kotlin.math.abs(kotlin.math.ln(known / target)) < io.github.audxius.pillar.data.COVER_FILL_TOLERANCE))
         MultiImage(
             sources, Modifier.matchParentSize(),
             fit = !fill,
@@ -479,7 +482,7 @@ fun GameTile(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    Column(modifier.tappable(RoundedCornerShape(LocalCorner.current * 0.7f), onLongClick, onClick)) {
+    Column(modifier.tappable(RoundedCornerShape(LocalCorner.current * 0.7f), onLongClick, onClick = onClick)) {
         GameCover(
             game,
             Modifier.fillMaxWidth(),
@@ -703,7 +706,7 @@ fun rememberCoverSources(game: Game): List<String> {
     val user = LocalUserData.current
     val art = rememberArt(game)
     val mediaVersion by graph.library.mediaVersion.collectAsStateWithLifecycle()
-    return remember(game.id, art, settings.coverStyle, settings.onlineCovers, settings.onlineArt, settings.noLogoCovers, settings.coverShape, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
+    return remember(game.id, art, settings.coverStyle, settings.onlineCovers, settings.onlineArt, settings.coverShape, user.customCover[game.id], user.remoteCover[game.id], mediaVersion) {
         graph.library.coverCandidates(game, settings, user, art)
     }
 }

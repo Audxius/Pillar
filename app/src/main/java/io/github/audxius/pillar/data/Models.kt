@@ -14,12 +14,20 @@ val PillarJson = Json {
 @Serializable enum class ThemeMode { SYSTEM, DARK, AMOLED, LIGHT }
 @Serializable enum class AppFont { NUNITO, OUTFIT, SPACE_GROTESK, SYSTEM, PIXEL, EXO }
 @Serializable enum class BackgroundStyle { STYLE, ART, AURORA, GRADIENT, SOLID, IMAGE }
-/** LUNA was removed in 0.9; it stays only so saved settings still load (and become GLASS). */
-@Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA, POCKET }
+/** LUNA (0.9) and POCKET (1.0) were removed; they stay only so saved settings still load (and become GLASS). */
+@Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA, POCKET, GRID }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
+/** How the carousel home browses games. */
+@Serializable enum class HomeBrowse { COVERS, COVERFLOW, LIST, CHANNELS, SHELF }
 
 /** Which artwork fills game tiles. */
 @Serializable enum class CoverStyle { BOXART, GRID, SQUARE }
+/**
+ * How far (as a log ratio) cover art may differ from its tile and still fill it. Small on purpose:
+ * filling crops, and on taller art that cuts the logo at the top and the text at the bottom.
+ */
+const val COVER_FILL_TOLERANCE = 0.09f
+
 @Serializable enum class CoverShape { NATURAL, BOX, SQUARE, WIDE }
 @Serializable enum class LibraryLayout { GRID, LIST }
 @Serializable enum class PlatformLayout { CARDS, GRID, LIST }
@@ -49,17 +57,15 @@ enum class WidgetType(val title: String, val description: String) {
 data class WidgetConfig(val type: WidgetType, val enabled: Boolean = true)
 
 /** Widgets that no longer exist; dropped from saved layouts. */
-val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT)
+// 1.0: Pillar isn't a launcher (no clock/greeting), and achievements live in their own tab.
+val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT, WidgetType.HEADER, WidgetType.RA_PROFILE, WidgetType.RA_PLAYED)
 
 val DefaultWidgets = listOf(
-    WidgetConfig(WidgetType.HEADER),
     WidgetConfig(WidgetType.CONTINUE),
     WidgetConfig(WidgetType.PLATFORMS),
-    WidgetConfig(WidgetType.RA_PROFILE),
     WidgetConfig(WidgetType.FAVORITES),
     WidgetConfig(WidgetType.RECENTLY_ADDED),
     WidgetConfig(WidgetType.ROMM_LATEST),
-    WidgetConfig(WidgetType.RA_PLAYED, enabled = false),
     WidgetConfig(WidgetType.RANDOM),
     WidgetConfig(WidgetType.STATS, enabled = false),
 )
@@ -106,14 +112,13 @@ data class AppSettings(
     /** Crop art to fill tiles instead of showing all of it over a blurred backdrop. */
     val coverCrop: Boolean = false,
     val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
-    /** Home browses games in a vertical list of titles instead of the sideways cover carousel. */
+    /** Replaced by [homeBrowse] in 1.0; read once to carry the choice over. */
     val homeVertical: Boolean = false,
-    /** Play a game's own music (from RomM soundtracks or the music folder) when it stays in focus on home. */
-    val gameMusic: Boolean = false,
-    /** Optional folder of game music files, matched to games by name. */
-    val musicDir: String? = null,
-    /** Prefer SteamGridDB covers without a logo on them. */
-    val noLogoCovers: Boolean = false,
+    val homeBrowse: HomeBrowse = HomeBrowse.COVERS,
+    /** Menu sound effects (taps, back, carousel ticks), in each style's own flavor. */
+    val menuSounds: Boolean = true,
+    /** RetroArch cores the user confirmed are installed (Android can't list them for other apps). */
+    val confirmedCores: Set<String> = emptySet(),
     val sgdbKey: String = "",
     val showGameTitles: Boolean = true,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
@@ -179,8 +184,10 @@ data class AppSettings(
         val known = kept.map { it.type }.toSet()
         val missing = WidgetType.entries.filter { it !in known && it !in RemovedWidgets }.map { WidgetConfig(it, enabled = false) }
         var s = copy(homeWidgets = kept + missing)
+        // 1.0: the vertical-list switch became one of several browse styles.
+        if (s.homeVertical) s = s.copy(homeVertical = false, homeBrowse = HomeBrowse.LIST)
         // 0.9: the Luna style was removed.
-        if (s.uiStyle == UiStyle.LUNA) s = s.copy(uiStyle = UiStyle.GLASS, palette = "aurora", themeMode = ThemeMode.DARK)
+        if (s.uiStyle == UiStyle.LUNA || s.uiStyle == UiStyle.POCKET) s = s.copy(uiStyle = UiStyle.GLASS, palette = "aurora", themeMode = ThemeMode.DARK, font = AppFont.OUTFIT)
         // 0.2: game-art background replaced the aurora as the default look.
         if (s.schema < 2) s = s.copy(schema = 2, background = if (s.background == BackgroundStyle.AURORA) BackgroundStyle.ART else s.background)
         // 0.3: styles own the backdrop, covers keep their real shape, the Glass look is the new default.

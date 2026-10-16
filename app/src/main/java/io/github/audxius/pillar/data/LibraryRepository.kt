@@ -252,8 +252,6 @@ class LibraryRepository(
      */
     fun coverCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {
         user.customCover[game.id]?.let(::add)
-        // Logo-free covers first when wanted: square ones for square tiles, portrait otherwise.
-        if (settings.noLogoCovers) (if (settings.coverShape == CoverShape.SQUARE) art?.sgdbSquareClean else art?.sgdbGridClean)?.let(::add)
         game.remoteCover?.let(::add)
         when (settings.coverStyle) {
             CoverStyle.SQUARE -> art?.sgdbSquare?.let(::add)
@@ -262,12 +260,12 @@ class LibraryRepository(
                 // Real boxes that don't fit the tile (square GBA boxes in 3:4 tiles, wide SNES ones)
                 // would be framed; SteamGridDB's covers come in the tile's shape, so use those first.
                 val tile = when (settings.coverShape) {
-                    CoverShape.BOX -> 0.75f
+                    CoverShape.BOX -> 2f / 3f
                     CoverShape.SQUARE -> 1f
                     CoverShape.WIDE -> null
                     CoverShape.NATURAL -> null
                 }
-                if (tile != null && kotlin.math.abs(kotlin.math.ln(catalog.boxRatio(game.system) / tile)) >= 0.16f) {
+                if (tile != null && kotlin.math.abs(kotlin.math.ln(catalog.boxRatio(game.system) / tile)) >= COVER_FILL_TOLERANCE) {
                     (if (tile == 1f) art?.sgdbSquare else art?.sgdbGrid)?.let(::add)
                 }
             }

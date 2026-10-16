@@ -218,13 +218,17 @@ private fun AppearancePage() {
                         },
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // A small live preview of the style.
-                    CompositionLocalProvider(io.github.audxius.pillar.ui.theme.LocalStyle provides spec.style) {
+                    // A small preview of the style as it comes: its own mode and default colors, so it
+                    // doesn't change with your current light/dark or palette choice.
+                    val look = spec.palettes.first()
+                    CompositionLocalProvider(
+                        io.github.audxius.pillar.ui.theme.LocalStyle provides spec.style,
+                        io.github.audxius.pillar.ui.theme.LocalIsDark provides (spec.presetMode != ThemeMode.LIGHT),
+                        io.github.audxius.pillar.ui.theme.LocalPalette provides look,
+                        io.github.audxius.pillar.ui.theme.LocalBackdrop provides null,
+                    ) {
                         Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))) {
-                            io.github.audxius.pillar.ui.theme.StyleBackdrop(
-                                androidx.compose.ui.graphics.Color(0xFF8B6CFF), androidx.compose.ui.graphics.Color(0xFF3DD6F5),
-                                androidx.compose.ui.graphics.Color(0xFFFF5CA8), animate = false,
-                            )
+                            io.github.audxius.pillar.ui.theme.StyleBackdrop(look.primary, look.secondary, look.tertiary, animate = false)
                             Box(
                                 Modifier.align(Alignment.Center).size(width = 70.dp, height = 40.dp).styledSurface(RoundedCornerShape(12.dp))
                             )
@@ -250,8 +254,10 @@ private fun AppearancePage() {
             Text("Palette", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(10.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Palettes.forEach { p ->
-                    val selected = p.id == s.palette && s.customAccent == null && !s.dynamicColor
+                // Only the color schemes made for the current style.
+                val activePalette = io.github.audxius.pillar.ui.theme.paletteFor(s.copy(customAccent = null)).id
+                io.github.audxius.pillar.ui.theme.specFor(s.uiStyle).palettes.forEach { p ->
+                    val selected = p.id == activePalette && s.customAccent == null && !s.dynamicColor
                     Column(
                         Modifier.width(68.dp).tappable(RoundedCornerShape(16.dp)) {
                             update { it.copy(palette = p.id, customAccent = null, dynamicColor = false) }
@@ -361,7 +367,7 @@ private fun AppearancePage() {
         SettingSwitch("Game logos", "Show logos instead of plain titles where available (sized to match each other)", s.showLogos) { v -> update { it.copy(showLogos = v) } }
         SettingChoice(
             "Cover shape",
-            listOf(CoverShape.NATURAL to "Real shape", CoverShape.BOX to "Box (3:4)", CoverShape.SQUARE to "Square", CoverShape.WIDE to "Wide (4:3)"),
+            listOf(CoverShape.NATURAL to "Real shape", CoverShape.BOX to "Box (2:3)", CoverShape.SQUARE to "Square", CoverShape.WIDE to "Wide (4:3)"),
             s.coverShape,
         ) { c -> update { it.copy(coverShape = c) } }
         SettingSlider("Grid columns", s.gridColumns.toFloat(), 2f..5f, steps = 2, label = { "${it.toInt()}" }) { v -> update { it.copy(gridColumns = v.toInt()) } }
@@ -376,7 +382,6 @@ private fun AppearancePage() {
 private fun HomePage() {
     val s = LocalSettings.current
     val update = rememberSettingsUpdater()
-    var name by remember { mutableStateOf(s.greetingName) }
     SettingsGroup("Layout") {
         SettingChoice(
             "Home style",
@@ -386,34 +391,16 @@ private fun HomePage() {
         ) { l -> update { it.copy(homeLayout = l) } }
         SettingChoice(
             "Browse games",
-            listOf(false to "Sideways covers", true to "Vertical list"),
-            s.homeVertical,
-            description = "How the carousel home scrolls through your games.",
-        ) { v -> update { it.copy(homeVertical = v) } }
-    }
-    SettingsGroup("Game music") {
-        val pickMusic = rememberFolderPicker { uri -> update { it.copy(musicDir = uri.toString()) } }
-        SettingSwitch(
-            "Play a game's music",
-            "When a game stays in focus on the home screen, its main theme plays. Also on the home screen's music note.",
-            s.gameMusic,
-        ) { v -> update { it.copy(gameMusic = v) } }
-        SettingRow(
-            "Music folder",
-            s.musicDir?.let { Saf.describeTree(Uri.parse(it)) }
-                ?: "Optional: audio files named after games (\"Super Metroid.mp3\"), or a folder per game with its tracks",
-            Icons.Rounded.Folder,
-        ) { pickMusic() }
-        Text(
-            "Pillar also plays a game's soundtrack from RomM when you've added one there (RomM 5.4 or newer). It doesn't download music from anywhere else.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-        )
-    }
-    SettingsGroup("Greeting") {
-        SettingField("Your name", name, { name = it; update { st -> st.copy(greetingName = it.trim()) } }, placeholder = "Shown in the greeting")
-        SettingSwitch("24-hour clock", null, s.clock24h) { v -> update { it.copy(clock24h = v) } }
-        SettingSwitch("Battery indicator", null, s.showBattery) { v -> update { it.copy(showBattery = v) } }
+            listOf(
+                io.github.audxius.pillar.data.HomeBrowse.COVERS to "Covers",
+                io.github.audxius.pillar.data.HomeBrowse.COVERFLOW to "Cover flow",
+                io.github.audxius.pillar.data.HomeBrowse.SHELF to "Shelf",
+                io.github.audxius.pillar.data.HomeBrowse.CHANNELS to "Channels",
+                io.github.audxius.pillar.data.HomeBrowse.LIST to "List",
+            ),
+            s.homeBrowse,
+            description = "Covers: a sideways carousel. Cover flow: covers turning in 3D. Shelf: game cases with their discs. Channels: pages of banners, like the Homebrew Channel. List: titles scrolling up and down.",
+        ) { v -> update { it.copy(homeBrowse = v) } }
     }
     SettingsGroup("Widgets") {
         Text(
@@ -560,11 +547,6 @@ private fun LibraryPage() {
             }) { Text("Save & test") }
         }
         sgdbStatus?.let { (m, ok) -> StatusLine(m, ok) }
-        SettingSwitch(
-            "Covers without logos",
-            "Pillar already shows each game's logo, so prefer SteamGridDB covers that leave it out. Games without one keep their normal cover.",
-            s.noLogoCovers,
-        ) { v -> update { it.copy(noLogoCovers = v) } }
         SettingRow("Refresh all artwork", "Look every game up again", onClick = { graph.artwork.reset() })
     }
 
@@ -941,7 +923,7 @@ private fun BehaviorPage() {
     }
     SettingsGroup("Feedback") {
         SettingSwitch("Haptics", "Subtle vibration on taps", s.haptics) { v -> update { it.copy(haptics = v) } }
-        SettingSwitch("Click sounds", "System click sound on taps", s.uiSounds) { v -> update { it.copy(uiSounds = v) } }
+        SettingSwitch("Menu sounds", "Short sounds for taps, going back and scrolling, in each style's own flavor", s.menuSounds) { v -> update { it.copy(menuSounds = v) } }
     }
     SettingsGroup("Backup") {
         SettingSwitch("Include passwords and keys", "Only turn on for backups you keep private", includeSecrets) { includeSecrets = it }

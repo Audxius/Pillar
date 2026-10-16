@@ -143,6 +143,21 @@ fun PillarRoot(graph: AppGraph) {
         val route = backStack?.destination?.route
         val showBar = route in Tabs.map { it.route }
         val dark = LocalIsDark.current
+        // A "back" sound whenever navigation returns to the screen before.
+        val sfx = io.github.audxius.pillar.ui.theme.rememberSfx()
+        val sfxNow by androidx.compose.runtime.rememberUpdatedState(sfx)
+        androidx.compose.runtime.DisposableEffect(nav) {
+            val history = ArrayList<String>()
+            val listener = androidx.navigation.NavController.OnDestinationChangedListener { c, _, _ ->
+                val id = c.currentBackStackEntry?.id ?: return@OnDestinationChangedListener
+                if (history.size >= 2 && history[history.size - 2] == id) {
+                    history.removeAt(history.lastIndex)
+                    sfxNow(io.github.audxius.pillar.data.Sfx.BACK)
+                } else if (history.lastOrNull() != id) history += id
+            }
+            nav.addOnDestinationChangedListener(listener)
+            onDispose { nav.removeOnDestinationChangedListener(listener) }
+        }
         // Decided once so finishing onboarding doesn't rebuild the nav graph underneath us.
         val startRoute = remember { if (settings.onboarded) Routes.HOME else Routes.ONBOARDING }
 
@@ -240,14 +255,15 @@ private fun PillarNavHost(nav: NavHostController, start: String) {
             }
         }
         composable(
-            "game?id={id}&src={src}",
+            "game?id={id}&src={src}&emu={emu}",
             arguments = listOf(
                 navArgument("id") { type = NavType.StringType },
                 navArgument("src") { type = NavType.StringType; defaultValue = "x" },
+                navArgument("emu") { type = NavType.StringType; defaultValue = "0" },
             ),
         ) { entry ->
             CompositionLocalProvider(LocalNavScope provides this) {
-                GameDetailScreen(entry.arguments?.getString("id").orEmpty(), entry.arguments?.getString("src") ?: "x")
+                GameDetailScreen(entry.arguments?.getString("id").orEmpty(), entry.arguments?.getString("src") ?: "x", openEmulators = entry.arguments?.getString("emu") == "1")
             }
         }
     }
@@ -271,11 +287,11 @@ private fun BottomBar(current: String?, onSelect: (String) -> Unit) {
         Tabs.forEach { tab ->
             val selected = current == tab.route
             // Each tab has its own color, like a handheld's home-menu dock.
-            // Pocket keeps to the Game Boy's four greens.
-            val pocket = io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.POCKET
-            val tabColor = if (pocket) io.github.audxius.pillar.ui.theme.Dmg0 else tab.color
+            // Grid keeps to ink and red instead of a color per tab.
+            val grid = io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.GRID
+            val tabColor = if (grid) (if (selected) io.github.audxius.pillar.ui.theme.GridRed else io.github.audxius.pillar.ui.theme.GridInk) else tab.color
             val bubble by animateColorAsState(if (selected) tabColor else tabColor.copy(alpha = 0.14f), label = "tabBubble")
-            val glyph by animateColorAsState(if (selected) (if (pocket) io.github.audxius.pillar.ui.theme.Dmg3 else Color.White) else tabColor, label = "tabGlyph")
+            val glyph by animateColorAsState(if (selected) Color.White else tabColor, label = "tabGlyph")
             Column(
                 Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
                     .tappable(RoundedCornerShape(20.dp)) { onSelect(tab.route) }
@@ -306,6 +322,7 @@ fun rememberGameLauncher(): (Game, EmuCommand?) -> Unit {
     val settings = LocalSettings.current
     val user = LocalUserData.current
     val snackbar = LocalSnackbar.current
+    val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     return remember(settings, user) {
         play@{ game: Game, override: EmuCommand? ->
@@ -317,7 +334,10 @@ fun rememberGameLauncher(): (Game, EmuCommand?) -> Unit {
             }
             val cmd = override ?: graph.launcher.selectCommand(game, settings, user)
             if (cmd == null) {
-                scope.launch { snackbar.showSnackbar("No emulator is set up for ${graph.catalog.fullName(game.system)}") }
+                scope.launch {
+                    val r = snackbar.showSnackbar("Pick the emulator for ${graph.catalog.displayName(game.system)} first", actionLabel = "Choose")
+                    if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) nav.navigate(Routes.game(game.id, "x") + "&emu=1")
+                }
             } else {
                 scope.launch {
                     // Never start a game while its save might still be downloading.

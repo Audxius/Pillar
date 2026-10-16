@@ -59,6 +59,7 @@ val Palettes = listOf(
     PalettePreset("y2k", "Millennium", Color(0xFF3FB8FF), Color(0xFFFF7A00), Color(0xFFB4FF39)),
     PalettePreset("xmb", "XMB", Color(0xFF4FA3FF), Color(0xFF9AD0FF), Color(0xFFE3F1FF)),
     PalettePreset("wii", "Wii", Color(0xFF34BEED), Color(0xFF8A9BA8), Color(0xFF5CD4FF)),
+    PalettePreset("grid", "Grid", Color(0xFFE4002B), Color(0xFF141414), Color(0xFF8A8A8A)),
     PalettePreset("mono", "Mono", Color(0xFFE6E6EA), Color(0xFF9A9AA6), Color(0xFFFFFFFF)),
 )
 
@@ -165,7 +166,7 @@ private fun typographyFor(font: AppFont, style: UiStyle, shadowed: Boolean = fal
     val f = familyFor(font)
     val base = Typography()
     // Y2K headings are heavy and slanted, like late-90s game box type.
-    val y2k = style == UiStyle.Y2K
+    val y2k = style == UiStyle.Y2K || style == UiStyle.GRID
     // Over bright, blurred game art a soft shadow keeps light text legible without hiding the art.
     val shadow = if (shadowed) androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(0f, 1.5f), 8f) else null
     fun TextStyle.with(weight: FontWeight, spacing: Float? = null) =
@@ -192,7 +193,9 @@ private fun typographyFor(font: AppFont, style: UiStyle, shadowed: Boolean = fal
 }
 
 fun paletteFor(settings: AppSettings): PalettePreset {
-    val preset = Palettes.firstOrNull { it.id == settings.palette } ?: Palettes.first()
+    // Each style has its own palettes; one from another style falls back to this style's default.
+    val list = specFor(settings.uiStyle).palettes.ifEmpty { Palettes }
+    val preset = list.firstOrNull { it.id == settings.palette } ?: list.first()
     return settings.customAccent?.let { preset.copy(primary = Color(it.toInt())) } ?: preset
 }
 
@@ -243,11 +246,11 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
         // Glassmorphism puts text straight over game art: brighter secondary text and a soft shadow.
         val glassDark = settings.uiStyle == UiStyle.GLASS && dark
         val finalScheme = when {
-            // Pocket is always the Game Boy's four greens.
-            settings.uiStyle == UiStyle.POCKET -> scheme.copy(
-                background = Dmg3, onBackground = Dmg0, surface = Dmg2, onSurface = Dmg0, onSurfaceVariant = Dmg1,
-                primary = Dmg1, onPrimary = Dmg3, secondary = Dmg1, tertiary = Dmg0,
-                surfaceContainerHigh = Dmg2, surfaceContainer = Dmg2, outline = Dmg1, outlineVariant = Dmg1,
+            // Grid is strictly ink, paper and one red.
+            settings.uiStyle == UiStyle.GRID -> scheme.copy(
+                background = GridPaper, onBackground = GridInk, surface = Color.White, onSurface = GridInk, onSurfaceVariant = Color(0xFF4A4A4A),
+                primary = palette.primary, onPrimary = Color.White, secondary = GridInk, tertiary = GridInk,
+                surfaceContainerHigh = Color.White, surfaceContainer = Color.White, outline = GridInk, outlineVariant = GridInk,
             )
             glassDark -> scheme.copy(onSurfaceVariant = Color(0xFFDAD6E8))
             else -> scheme
@@ -259,16 +262,26 @@ fun PillarTheme(graph: AppGraph, settings: AppSettings, user: UserData, content:
     }
 }
 
-/** Haptic tick + optional click sound, honoring the user's feedback settings. */
+/** Haptic tick + the style's select sound, honoring the user's feedback settings. */
 @Composable
 fun rememberFeedback(): () -> Unit {
     val settings = LocalSettings.current
     val haptic = LocalHapticFeedback.current
-    val view = LocalView.current
-    return remember(settings.haptics, settings.uiSounds) {
+    val sfx = rememberSfx()
+    return remember(settings.haptics, sfx) {
         {
             if (settings.haptics) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            if (settings.uiSounds) view.playSoundEffect(SoundEffectConstants.CLICK)
+            sfx(io.github.audxius.pillar.data.Sfx.SELECT)
         }
+    }
+}
+
+/** Plays one of the current style's menu sounds (when menu sounds are on). */
+@Composable
+fun rememberSfx(): (io.github.audxius.pillar.data.Sfx) -> Unit {
+    val graph = LocalGraph.current
+    val settings = LocalSettings.current
+    return remember(settings.menuSounds, settings.uiStyle) {
+        { s -> if (settings.menuSounds) graph.sounds.play(settings.uiStyle, s) }
     }
 }

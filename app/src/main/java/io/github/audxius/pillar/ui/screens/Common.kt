@@ -90,7 +90,7 @@ fun ScreenHeader(
 fun RoundIcon(icon: ImageVector, description: String, modifier: Modifier = Modifier, tint: Color? = null, onClick: () -> Unit) {
     Box(
         modifier.size(44.dp).styledSurface(CircleShape)
-            .tappable(CircleShape, onClick = onClick),
+            .tappable(CircleShape, silent = description == "Back", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, description, tint = tint ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))

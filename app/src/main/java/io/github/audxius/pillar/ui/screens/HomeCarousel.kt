@@ -56,6 +56,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.saveable.rememberSaveable
+import io.github.audxius.pillar.ui.components.rememberCoverSources
+import io.github.audxius.pillar.ui.components.MultiImage
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.zIndex
@@ -127,15 +136,26 @@ fun HomeCarouselScreen() {
         return
     }
 
+    val browse = LocalSettings.current.homeBrowse
     val listState = rememberLazyListState()
-    val selectedIndex by remember(listState) {
+    val listIndex by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
             val center = (info.viewportStartOffset + info.viewportEndOffset) / 2
             info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2 - center) }?.index ?: 0
         }
     }
+    // Channels selects by tapping; every other style selects whatever is in the middle.
+    var chosen by rememberSaveable { mutableStateOf(0) }
+    val selectedIndex = if (browse == io.github.audxius.pillar.data.HomeBrowse.CHANNELS) chosen.coerceIn(0, ordered.lastIndex) else listIndex
     val centered = ordered.getOrNull(selectedIndex.coerceIn(0, ordered.lastIndex)) ?: ordered.first()
+    // A tick for every game that passes the middle.
+    val sfx = io.github.audxius.pillar.ui.theme.rememberSfx()
+    var lastTick by remember { mutableStateOf(-1) }
+    LaunchedEffect(selectedIndex) {
+        if (lastTick >= 0 && lastTick != selectedIndex) sfx(io.github.audxius.pillar.data.Sfx.MOVE)
+        lastTick = selectedIndex
+    }
     // While flinging, the logo, backdrop and lookups wait until a game stays centered for a moment;
     // loading them for every cover that flies past is what made fast scrolling stutter.
     var selected by remember { mutableStateOf(centered) }
@@ -153,18 +173,13 @@ fun HomeCarouselScreen() {
     }
     // Look up achievement support for whatever is in focus (cached, so cheap after the first time).
     LaunchedEffect(selected.id) { if (!selected.remote) runCatching { graph.ra.idFor(selected, graph.catalog) } }
-    // The focused game's own music, if you have it (RomM soundtrack or the music folder).
-    val musicOn = LocalSettings.current.gameMusic
-    val fg by graph.foreground.collectAsStateWithLifecycle()
-    LaunchedEffect(selected.id, musicOn, fg) { if (musicOn && fg) graph.music.focus(selected, graph.rommIdFor(selected)) else graph.music.stop() }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { graph.music.stop() } }
+
 
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
         val itemHeight = (maxHeight * 0.3f).coerceIn(130.dp, 270.dp)
         Column(Modifier.fillMaxSize()) {
             // The logo gets all the room the carousel and buttons don't need.
             Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                MusicToggle(Modifier.align(Alignment.TopEnd).padding(top = 6.dp))
                 Crossfade(targetState = selected, animationSpec = tween(200), label = "logo") { g ->
                     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         TitleOrLogo(
@@ -178,10 +193,11 @@ fun HomeCarouselScreen() {
             Spacer(Modifier.height(12.dp))
             HomePlayButton(selected)
             Spacer(Modifier.height(6.dp))
-            if (LocalSettings.current.homeVertical) {
-                GameWheel(ordered, listState, selectedIndex, Modifier.weight(1.25f), onLongPress = { quick = it })
-            } else {
-                Carousel(ordered, listState, selectedIndex, itemHeight, onLongPress = { quick = it })
+            when (browse) {
+                io.github.audxius.pillar.data.HomeBrowse.LIST -> GameWheel(ordered, listState, selectedIndex, Modifier.weight(1.25f), onLongPress = { quick = it })
+                io.github.audxius.pillar.data.HomeBrowse.CHANNELS -> ChannelGrid(ordered, chosen, { chosen = it }, Modifier.weight(1.4f), onLongPress = { quick = it })
+                io.github.audxius.pillar.data.HomeBrowse.SHELF -> Shelf(ordered, listState, selected.id, itemHeight, onLongPress = { quick = it })
+                else -> Carousel(ordered, listState, selectedIndex, itemHeight, coverFlow = browse == io.github.audxius.pillar.data.HomeBrowse.COVERFLOW, onLongPress = { quick = it })
             }
             Text(
                 "${selectedIndex + 1} / ${ordered.size}",
@@ -194,20 +210,6 @@ fun HomeCarouselScreen() {
         }
     }
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
-}
-
-/** The little music note that turns game music (the focused game's own theme) on and off. */
-@Composable
-private fun MusicToggle(modifier: Modifier) {
-    val graph = LocalGraph.current
-    val on = LocalSettings.current.gameMusic
-    val scope = rememberCoroutineScope()
-    StyledIconButton(
-        if (on) Icons.Rounded.MusicNote else Icons.Rounded.MusicOff,
-        if (on) "Turn game music off" else "Turn game music on",
-        modifier, size = 40.dp,
-        tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-    ) { scope.launch { graph.store.update { it.copy(gameMusic = !it.gameMusic) } } }
 }
 
 /** Pill chip drawn in the current style. */
@@ -341,7 +343,7 @@ fun TitleOrLogo(g: Game, maxWidth: Dp = 260.dp, maxHeight: Dp = 72.dp, alignment
 }
 
 @Composable
-private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, itemHeight: Dp, onLongPress: (Game) -> Unit) {
+private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, itemHeight: Dp, coverFlow: Boolean, onLongPress: (Game) -> Unit) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
     val nav = LocalNav.current
@@ -349,8 +351,15 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
     val corner = LocalCorner.current
     // One scroll at a time: a new tap replaces a scroll that's still running.
     var tapJob by remember { mutableStateOf<Job?>(null) }
-    // Wii: a WiiFlow-style 3D cover flow with reflections on a glossy floor.
-    val coverFlow = io.github.audxius.pillar.ui.theme.LocalStyle.current == io.github.audxius.pillar.data.UiStyle.WII
+    // A touch that lands while the list is still sliding only stops it; it isn't a tap.
+    var pressedWhileMoving by remember { mutableStateOf(false) }
+    val catchMoving = Modifier.pointerInput(state) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
+        }
+    }
+    // Cover flow: WiiFlow-style 3D covers with reflections on a glossy floor.
     val floor = MaterialTheme.colorScheme.background
     val coverH = if (coverFlow) itemHeight * 0.8f else itemHeight
     BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp)) {
@@ -362,7 +371,7 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
             contentPadding = PaddingValues(horizontal = side),
             horizontalArrangement = Arrangement.spacedBy(if (coverFlow) 4.dp else 14.dp),
             verticalAlignment = if (coverFlow) Alignment.Top else Alignment.CenterVertically,
-            modifier = Modifier.fillMaxHeight(),
+            modifier = Modifier.fillMaxHeight().then(catchMoving),
         ) {
             itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
                 val focused = index == selectedIndex
@@ -410,7 +419,8 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                         )
                         .tappable(RoundedCornerShape(corner * 0.7f), onLongClick = { onLongPress(g) }) {
                             // Tapping the centered game opens its page; tapping another one brings it to the center.
-                            if (focused) nav.navigate(Routes.game(g.id, "home"))
+                            if (pressedWhileMoving) pressedWhileMoving = false
+                            else if (focused) nav.navigate(Routes.game(g.id, "home"))
                             else { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
                         },
                     sharedKey = "cover-home-${g.id}",
@@ -437,6 +447,14 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
     val user = LocalUserData.current
     val scope = rememberCoroutineScope()
     var tapJob by remember { mutableStateOf<Job?>(null) }
+    // A touch that lands while the list is still sliding only stops it; it isn't a tap.
+    var pressedWhileMoving by remember { mutableStateOf(false) }
+    val catchMoving = Modifier.pointerInput(state) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
+        }
+    }
     val rowHeight = 76.dp
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val pad = ((maxHeight - rowHeight) / 2).coerceAtLeast(0.dp)
@@ -446,7 +464,7 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
             contentPadding = PaddingValues(vertical = pad, horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             // Rows fade out toward the edges instead of being cut off under the Play button.
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().then(catchMoving)
                 .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                 .drawWithContent {
                     drawContent()
@@ -465,7 +483,8 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
                         .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (focused) 1f else 0.55f }
                         .then(if (focused) Modifier.styledSurface(shape, strong = true) else Modifier)
                         .tappable(shape, onLongClick = { onLongPress(g) }) {
-                            if (focused) nav.navigate(Routes.game(g.id, "home"))
+                            if (pressedWhileMoving) pressedWhileMoving = false
+                            else if (focused) nav.navigate(Routes.game(g.id, "home"))
                             else { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
                         }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -481,6 +500,203 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
                             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Discs for disc-based consoles, cartridges for the rest (for the Shelf's case that opens). */
+private val DISC_SYSTEMS = setOf(
+    "psx", "ps2", "ps3", "psp", "gc", "wii", "wiiu", "saturn", "saturnjp", "segacd", "megacd", "megacdjp", "dreamcast",
+    "pcenginecd", "tg-cd", "3do", "neogeocd", "pcfx", "atarijaguarcd", "xbox", "naomi",
+)
+
+/**
+ * Shelf: games as cases standing on a shelf, spines out. The game in focus slides out to show its
+ * cover, and its disc (or cartridge) rises out of the case.
+ */
+@Composable
+private fun Shelf(games: List<Game>, state: LazyListState, expandedId: String, itemHeight: Dp, onLongPress: (Game) -> Unit) {
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    val settings = LocalSettings.current
+    val corner = LocalCorner.current
+    var tapJob by remember { mutableStateOf<Job?>(null) }
+    var pressedWhileMoving by remember { mutableStateOf(false) }
+    val catchMoving = Modifier.pointerInput(state) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
+        }
+    }
+    val caseH = itemHeight * 0.7f
+    val spineW = 40.dp
+    // Once a case has slid out, keep it centered.
+    val expandedIndex = games.indexOfFirst { it.id == expandedId }
+    LaunchedEffect(expandedId) {
+        delay(320)
+        if (!state.isScrollInProgress && expandedIndex >= 0) state.centerOn(expandedIndex)
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp)) {
+        val side = ((maxWidth - spineW) / 2).coerceAtLeast(0.dp)
+        LazyRow(
+            state = state,
+            flingBehavior = rememberSnapFlingBehavior(state),
+            contentPadding = PaddingValues(horizontal = side),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.fillMaxHeight().then(catchMoving),
+        ) {
+            itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
+                val open = g.id == expandedId
+                val coverW = caseH * settings.coverShape.ratio()
+                val width by androidx.compose.animation.core.animateDpAsState(if (open) coverW else spineW, spring(dampingRatio = 0.8f, stiffness = 300f), label = "case")
+                val lift by animateFloatAsState(if (open) 1f else 0f, tween(420, delayMillis = if (open) 220 else 0), label = "disc")
+                Box(
+                    Modifier.width(width).fillMaxHeight()
+                        .tappable(RoundedCornerShape(corner * 0.4f), onLongClick = { onLongPress(g) }) {
+                            if (pressedWhileMoving) pressedWhileMoving = false
+                            else if (open) nav.navigate(Routes.game(g.id, "home"))
+                            else { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
+                        },
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    // The disc or cartridge, rising out of the top of the case behind it.
+                    if (lift > 0.01f) {
+                        val media = coverW * 0.82f
+                        Box(
+                            Modifier.align(Alignment.BottomCenter).padding(bottom = caseH * 0.35f).size(media)
+                                .graphicsLayer { translationY = -lift * (itemHeight * 1.12f - caseH).toPx(); alpha = lift },
+                        ) {
+                            if (g.system in DISC_SYSTEMS) GameDisc(g) else GameCartridge(g)
+                        }
+                    }
+                    Box(Modifier.height(caseH).fillMaxWidth()) {
+                        if (width > spineW + 4.dp) {
+                            GameCover(g, Modifier.fillMaxSize(), ratio = null, compact = true)
+                        } else {
+                            CaseSpine(g)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A case's spine: the console's color, the title running bottom to top, the console name. */
+@Composable
+private fun CaseSpine(g: Game) {
+    val color = systemColor(g.system)
+    Box(
+        Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp))
+            .background(Brush.horizontalGradient(listOf(lerp(color, Color.Black, 0.55f), lerp(color, Color.White, 0.08f), lerp(color, Color.Black, 0.4f))))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(3.dp)),
+    ) {
+        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(22.dp).background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+            Text(systemName(g.system).take(4).uppercase(), style = MaterialTheme.typography.labelSmall, color = Color.White, maxLines = 1)
+        }
+        Text(
+            gameTitle(g), color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.Center).padding(top = 22.dp).sidewaysText(),
+        )
+    }
+}
+
+/** Lays text out sideways, reading bottom to top like a case spine. */
+private fun Modifier.sidewaysText() = layout { m, c ->
+    val p = m.measure(androidx.compose.ui.unit.Constraints(maxWidth = c.maxHeight, maxHeight = c.maxWidth))
+    layout(p.height, p.width) {
+        p.placeWithLayer(-(p.width - p.height) / 2, (p.width - p.height) / 2) { rotationZ = -90f }
+    }
+}
+
+/** A disc: the cover art printed on it, a center hole and a sheen. */
+@Composable
+private fun GameDisc(g: Game) {
+    val sources = rememberCoverSources(g)
+    Box(Modifier.fillMaxSize().shadow(8.dp, CircleShape).clip(CircleShape).background(Color(0xFFDADDE2))) {
+        MultiImage(sources, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 400) {}
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.sweepGradient(listOf(Color.White.copy(alpha = 0.0f), Color.White.copy(alpha = 0.35f), Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.25f), Color.White.copy(alpha = 0f)))
+            )
+        )
+        Box(Modifier.align(Alignment.Center).fillMaxSize(0.3f).clip(CircleShape).background(Color(0xFFC9CED6)).border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape))
+        Box(Modifier.align(Alignment.Center).fillMaxSize(0.12f).clip(CircleShape).background(MaterialTheme.colorScheme.background))
+    }
+}
+
+/** A cartridge: grey plastic with the cover art as its label. */
+@Composable
+private fun GameCartridge(g: Game) {
+    val sources = rememberCoverSources(g)
+    val shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.fillMaxWidth(0.82f).fillMaxHeight().shadow(8.dp, shape).clip(shape)
+                .background(Brush.verticalGradient(listOf(Color(0xFF8E9196), Color(0xFF6C7076)))).padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.Black.copy(alpha = 0.25f)))
+            Spacer(Modifier.height(6.dp))
+            MultiImage(sources, Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(4.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 400) {}
+        }
+    }
+}
+
+/** Channels: pages of wide banners, like the Homebrew Channel. Tap once to select, again to open. */
+@Composable
+private fun ChannelGrid(games: List<Game>, chosen: Int, onChoose: (Int) -> Unit, modifier: Modifier, onLongPress: (Game) -> Unit) {
+    val nav = LocalNav.current
+    val corner = LocalCorner.current
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val cols = 2
+        val tileW = (maxWidth - 16.dp * 2 - 10.dp) / cols
+        val tileH = tileW * 0.42f
+        val rows = ((maxHeight - 24.dp) / (tileH + 10.dp)).toInt().coerceAtLeast(1)
+        val perPage = rows * cols
+        val pages = (games.size + perPage - 1) / perPage
+        val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = chosen / perPage) { pages }
+        // Flipping pages selects the first game on the new page.
+        LaunchedEffect(pager.currentPage) { if (chosen / perPage != pager.currentPage) onChoose(pager.currentPage * perPage) }
+        Column(Modifier.fillMaxSize()) {
+            androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth()) { page ->
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (r in 0 until rows) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (c in 0 until cols) {
+                            val i = page * perPage + r * cols + c
+                            val g = games.getOrNull(i)
+                            if (g == null) Spacer(Modifier.width(tileW)) else {
+                                val sel = i == chosen
+                                val scale by animateFloatAsState(if (sel) 1.05f else 1f, label = "ch")
+                                val shape = RoundedCornerShape(corner * 0.6f)
+                                Box(
+                                    Modifier.width(tileW).height(tileH).graphicsLayer { scaleX = scale; scaleY = scale }
+                                        .shadow(if (sel) 10.dp else 2.dp, shape)
+                                        .clip(shape)
+                                        .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.3f), shape)
+                                        .tappable(shape, onLongClick = { onLongPress(g) }) { if (sel) nav.navigate(Routes.game(g.id, "home")) else onChoose(i) },
+                                ) {
+                                    MultiImage(rememberHeroSources(g), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 500) {
+                                        Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(lerp(systemColor(g.system), Color.White, 0.1f), lerp(systemColor(g.system), Color.Black, 0.5f)))))
+                                    }
+                                    Box(
+                                        Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    ) { Text(gameTitle(g), color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Page dots.
+            Row(Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (pIdx in 0 until minOf(pages, 12)) {
+                    Box(Modifier.size(if (pIdx == pager.currentPage) 8.dp else 6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onBackground.copy(alpha = if (pIdx == pager.currentPage) 0.9f else 0.3f)))
                 }
             }
         }

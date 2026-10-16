@@ -24,9 +24,9 @@ progress. Almost everything about how it looks can be changed.
 <p align="center">
   <img src="docs/style-xmb-home.webp" width="23%" alt="XMB style" />
   <img src="docs/style-wii-home.webp" width="23%" alt="Wii style" />
-  <img src="docs/style-pocket-home.webp" width="23%" alt="Pocket style" />
+  <img src="docs/style-grid-home.webp" width="23%" alt="Grid style" />
 </p>
-<p align="center"><sub>Glassmorphism (top); Frutiger Aero and Y2K, the Y2K one with the vertical game list; XMB, Wii (with its cover flow) and Pocket</sub></p>
+<p align="center"><sub>Glassmorphism (top); Frutiger Aero and Y2K, the Y2K one with the vertical game list; XMB, Wii (with the cover flow) and Grid (with Channels)</sub></p>
 
 ## Install
 
@@ -50,13 +50,14 @@ Android 8.0 or newer.
   pick one to browse its games with search, sort, filters and its default emulator.
 - **Knows your games.** Cartridge-era ROMs are identified by checksum against the No-Intro
   databases, so a file called `sonic3k.md` still gets its real name, box art and logo.
-- **Six looks.** Liquid Glass (default: Apple-style glass that refracts your game's art);
-  Frutiger Aero (Vista sky, light rays, bubbles, glossy glass and aqua buttons); Y2K (PS2 and
-  Dreamcast menus: a grid floor fading into fog, see-through cubes, HUD panels, chrome buttons);
-  XMB (the PSP/PS3 wave); Wii (white pinstripes, Wii-blue rims and a WiiFlow-style 3D cover
-  flow); and Pocket (the original Game Boy's green LCD, pixel grid and chunky borders).
-- **Game music.** Stay on a game and its main theme plays: from its soundtrack on RomM (5.4+)
-  or a folder of music files named after your games. Toggle it with the music note.
+- **Six looks, each with its own color schemes.** Liquid Glass (default: Apple-style glass that
+  refracts your game's art); Frutiger Aero (Windows 7 glass over a bright sky, glossy grass, water
+  drops and bubbles); Y2K (PS2 and Dreamcast menus: a grid floor fading into fog, see-through
+  cubes, HUD panels, chrome buttons); XMB (the PSP/PS3 wave, in its monthly colors); Wii (white
+  pinstripes and Wii-blue rims); and Grid (8-bit era box art: a black grid on white, one bold
+  color). Menu sounds to match each one.
+- **Five ways to browse.** Covers, a 3D cover flow, a shelf of game cases whose disc or cartridge
+  slides out, pages of banners like the Homebrew Channel, or a vertical list.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -64,35 +65,36 @@ Android 8.0 or newer.
 - **200+ systems and hundreds of emulators.** Uses ES-DE's open Android system and emulator
   definitions: RetroArch cores, Dolphin, AetherSX2/NetherSX2, DuckStation, PPSSPP, melonDS,
   Azahar, Eden, Flycast, MAME4droid and many more. Choose a default per system or per game (from
-  the arrow on the Play button), or write your own launch command. RetroArch cores you haven't
-  used yet are flagged, since a missing core leaves RetroArch on a black screen.
+  the arrow on the Play button), or write your own launch command. Pillar never launches a
+  RetroArch core it doesn't know you have, since a missing core leaves RetroArch on a black screen.
 - **Artwork.** Box art from the libretro thumbnail server with fuzzy name matching (so
   "Final Fantasy 3.sfc" still finds its cover), your RomM covers, ES-DE's `downloaded_media`
   folder, or [SteamGridDB](https://www.steamgriddb.com) with a free API key (covers, square icons,
-  wide backgrounds, logos, and optionally covers without the logo printed on them). Covers are
-  never cropped unless you want them to be.
+  wide backgrounds, logos). Cover tiles are 2:3, close to most game boxes, and covers are never
+  cropped by more than a sliver unless you want them to be.
 - **Saves & sync.** Lists every save file and save state by game. Syncs with the same WebDAV
   server RetroArch's Cloud Sync uses (including RomM's `/api/sync/retroarch`), with RetroArch's
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
   deletes anything on the server and backs up any save before replacing it. When a save changed
-  on both sides, you see how old each copy is and pick which to keep. A small indicator shows while
+  on both sides, you see how old each copy is and pick which to keep. Your RomM save slots show on
+  each game's page: play from any of them, or make one your main save. A small indicator shows while
   saves sync, optionally even over a game you've gone back into.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for
   you, and downloads keep going in the background. Games that aren't on RomM yet are marked and
   can be uploaded from their page, and duplicates can be deleted from the device, RomM or both.
 - **RetroAchievements.** Profile and your games as expandable cards with the achievements you
   still need listed first; games without a set are marked "No achievements", and games you've
-  given up on can be hidden (or reset on retroachievements.org). Local games are matched in the background by ROM hash, like
+  given up on can be reset on retroachievements.org from the ⋮ menu. Local games are matched in the background by ROM hash, like
   RetroArch, falling back to the title; RomM games use RomM's match. You can also set a game ID
   by hand.
 - **Customize everything.**
-  - Theme: 10 palettes, any accent color, Material You, dark / AMOLED black / light.
+  - Theme: color schemes made for each style, any accent color, Material You, dark / AMOLED black / light.
   - Fonts: Nunito, Outfit, Space Grotesk, Exo 2, a pixel font, or the system font, plus text size.
   - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
     blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
-  - Feed home layout: 10 widgets (clock, continue playing, platforms, favorites,
-    RetroAchievements, RomM, random pick, stats…) that you can toggle and reorder.
+  - Widget home layout: continue playing, platforms, favorites, recently added, new on RomM,
+    random pick and stats, which you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.
   - Export and import all of it as a backup file.

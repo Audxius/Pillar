@@ -124,8 +124,9 @@ fun SettingRow(
 
 @Composable
 fun SettingSwitch(title: String, description: String? = null, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    val sfx = io.github.audxius.pillar.ui.theme.rememberSfx()
     SettingRow(title, description, onClick = if (enabled) ({ onChange(!checked) }) else null) {
-        Switch(checked = checked, onCheckedChange = if (enabled) onChange else null, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = if (enabled) ({ v -> sfx(io.github.audxius.pillar.data.Sfx.TOGGLE); onChange(v) }) else null, enabled = enabled)
     }
 }
 

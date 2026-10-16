@@ -60,6 +60,7 @@ class AppGraph(val context: Context) {
     val raClient = RaClient(context, http) { store.settings.value }
     val ra = RaRepository(context, raClient, store, catalog, scope)
     val identifier = GameIdentifier(context, http, catalog, scope)
+    val sounds = UiSounds(context)
     /** True while one of Pillar's screens is visible (set by MainActivity). */
     val foreground = MutableStateFlow(false)
 
@@ -67,7 +68,6 @@ class AppGraph(val context: Context) {
     val downloads = Downloads(context, http, romm, catalog, store, library)
     val artwork = ArtworkRepository(context, http, catalog, store, scope) { ra.hashTitles.value }
     val saveSync = SaveSync(context, http, store, scope)
-    val music = GameMusic(context, romm, store, scope)
 
     /**
      * Local game id -> RomM id: games downloaded from RomM, plus local copies of a RomM game
@@ -174,6 +174,26 @@ class AppGraph(val context: Context) {
         problems.joinToString(". ").ifBlank { null }
     }
 
+    /**
+     * Makes a RomM save this device's save for the game, backing up the current one: over the
+     * game's existing save file, or under the save's emulator folder when there isn't one yet.
+     */
+    suspend fun useRommSave(game: Game, save: RommSave) = withContext(Dispatchers.IO) {
+        val tmp = File(context.cacheDir, "romm-save.tmp")
+        try {
+            romm.downloadSave(save, tmp)
+            val stem = game.baseName.lowercase()
+            val local = saveSync.listLocal()
+                .filter { it.key.startsWith("saves/", true) && it.name.substringBeforeLast('.').lowercase() == stem }
+                .maxByOrNull { it.modified }
+            val ext = save.extension.ifBlank { save.fileName.substringAfterLast('.', "srm") }
+            val key = local?.key ?: "saves/${save.emulator?.takeIf { it.isNotBlank() } ?: "RetroArch"}/${game.baseName}.$ext"
+            saveSync.installSave(key, tmp)
+        } finally {
+            tmp.delete()
+        }
+    }
+
     /** Uploads a local game to the matching platform on RomM. */
     suspend fun uploadToRomm(game: Game, onProgress: (Float) -> Unit) {
         val platforms = (rommRepo.platforms.value as? Loadable.Ready)?.value ?: romm.platforms()
@@ -216,12 +236,10 @@ class AppGraph(val context: Context) {
     init {
         identifyGames()
         scope.launch { saveSync.coreFolders.collect { launcher.usedCores = it } }
-        // Game music never plays over a game or with the switch off.
-        scope.launch {
-            combine(foreground, store.settings.map { it.gameMusic }.distinctUntilChanged()) { fg, on -> fg && on }
-                .collect { if (!it) launch(Dispatchers.Main) { music.stop() } }
-        }
-        scope.launch { store.settings.map { it.musicDir }.distinctUntilChanged().collect { music.rescan() } }
+        scope.launch { store.settings.map { it.confirmedCores }.distinctUntilChanged().collect { launcher.confirmedCores = it } }
+        // Menu sounds are synthesized ahead of time for the current style.
+        scope.launch(Dispatchers.IO) { store.settings.map { it.uiStyle }.distinctUntilChanged().collect { sounds.warmUp(it) } }
+
 
         matchRetroAchievements()
         scope.launch {

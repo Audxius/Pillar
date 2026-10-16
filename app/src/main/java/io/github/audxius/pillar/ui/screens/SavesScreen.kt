@@ -62,6 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.ui.theme.LocalUserData
+import io.github.audxius.pillar.data.RommSave
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.ThumbMatch
 import io.github.audxius.pillar.data.LocalSaveFile
@@ -544,4 +546,98 @@ private fun BackupsDialog(onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/**
+ * The game's saves on RomM, by slot. RetroArch sync always uses the newest save in the
+ * "autosave" slot, so that one is the main save; any other can be played from or made main.
+ */
+@Composable
+fun RommSaves(game: Game, rommId: Int) {
+    val graph = LocalGraph.current
+    val snackbar = LocalSnackbar.current
+    val launch = io.github.audxius.pillar.ui.rememberGameLauncher()
+    var saves by remember { mutableStateOf<List<RommSave>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var refresh by remember { mutableStateOf(0) }
+    var choosing by remember { mutableStateOf<RommSave?>(null) }
+    LaunchedEffect(rommId, refresh) {
+        runCatching { graph.romm.saves(rommId) }.onSuccess { saves = it; error = null }.onFailure { error = it.message }
+    }
+    val list = saves ?: return
+    if (list.isEmpty() && error == null) return
+    // Newest first in each slot; the main save is the head of "autosave" (or of the unslotted ones).
+    val bySlot = list.sortedByDescending { it.updatedMillis }.groupBy { it.slot }
+    val mainId = (bySlot["autosave"] ?: bySlot[null])?.firstOrNull()?.id
+    Spacer(Modifier.height(16.dp))
+    Glass(Modifier.fillMaxWidth(), padding = 16.dp) {
+        Text("Saves on RomM", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Play from any of them, or make one your main save (the one RetroArch syncs).",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        bySlot.entries.sortedBy { (slot, _) -> if (slot == "autosave") "" else slot ?: "~" }.forEach { (slot, versions) ->
+            var expanded by remember(slot) { mutableStateOf(false) }
+            Text(
+                when (slot) { "autosave" -> "Main slot"; null -> "No slot"; else -> slot }.uppercase(),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+            )
+            (if (expanded) versions else versions.take(1)).forEach { s ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(s.labels.firstOrNull() ?: s.fileName, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            listOfNotNull(s.emulator, formatBytes(s.size), s.updatedMillis.takeIf { it > 0 }?.let { timeAgo(it) }).joinToString(" · "),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                        )
+                    }
+                    if (s.id == mainId) {
+                        Text(
+                            "Main", style = MaterialTheme.typography.labelSmall, color = Color.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(successColor()).padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    } else {
+                        TextButton(onClick = { choosing = s }) { Text("Use…") }
+                    }
+                }
+            }
+            if (versions.size > 1) {
+                TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Show less" else "${versions.size - 1} older version${if (versions.size > 2) "s" else ""}") }
+            }
+        }
+    }
+    choosing?.let { s ->
+        AlertDialog(
+            onDismissRequest = { choosing = null },
+            title = { Text("Use this save?") },
+            text = {
+                Text(
+                    "It replaces the save on this device; the current one is backed up first (Saves → Backups). " +
+                        "Once it syncs, it's your main save on RomM too, and older ones stay in their slots."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    choosing = null
+                    graph.scope.launch(Dispatchers.Main) {
+                        runCatching { graph.useRommSave(game, s) }
+                            .onSuccess { launch(game, null) }
+                            .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't use that save") }
+                    }
+                }) { Text("Play from it") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    choosing = null
+                    graph.scope.launch(Dispatchers.Main) {
+                        runCatching { graph.useRommSave(game, s); graph.saveSync.sync() }
+                            .onSuccess { snackbar.showSnackbar("That save is now your main save"); refresh++ }
+                            .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't use that save") }
+                    }
+                }) { Text("Make it main") }
+            },
+        )
+    }
 }

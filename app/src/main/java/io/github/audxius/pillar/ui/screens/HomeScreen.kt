@@ -71,6 +71,7 @@ import io.github.audxius.pillar.data.Game
 import io.github.audxius.pillar.data.Loadable
 import io.github.audxius.pillar.data.RommRom
 import io.github.audxius.pillar.data.WidgetType
+import io.github.audxius.pillar.data.RemovedWidgets
 import io.github.audxius.pillar.data.raMedia
 import io.github.audxius.pillar.ui.BottomBarSpace
 import io.github.audxius.pillar.ui.LocalNav
@@ -141,26 +142,21 @@ private fun HomeFeed() {
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = BottomBarSpace),
     ) {
-        val enabled = settings.homeWidgets.filter { it.enabled }.map { it.type }
-        if (WidgetType.HEADER !in enabled) {
-            item { Spacer(Modifier.statusBarsPadding()) }
-            if (games.isEmpty()) item("empty") { GapIfNotEmpty(12.dp) { EmptyLibraryCard() } }
-        }
+        val enabled = settings.homeWidgets.filter { it.enabled && it.type !in RemovedWidgets }.map { it.type }
+        item { Spacer(Modifier.statusBarsPadding()) }
+        if (games.isEmpty()) item("empty") { GapIfNotEmpty(12.dp) { EmptyLibraryCard() } }
         for ((index, type) in enabled.withIndex()) {
-            if (index > 0 && enabled[index - 1] == WidgetType.HEADER && games.isEmpty()) {
-                item("empty") { GapIfNotEmpty(22.dp) { EmptyLibraryCard() } }
-            }
             item(type.name) {
                 GapIfNotEmpty(if (index == 0) 0.dp else 22.dp) {
                 when (type) {
-                    WidgetType.HEADER -> HeaderWidget()
+                    WidgetType.HEADER -> Unit
                     WidgetType.CONTINUE -> ContinueWidget(recent.ifEmpty { games.shuffledStable().take(6) }, isRecent = recent.isNotEmpty())
                     WidgetType.PLATFORMS -> PlatformsWidget(games)
                     WidgetType.FAVORITES -> GameRowWidget("Favorites", games.filter { it.id in user.favorites }, "fav") { quick = it }
                     WidgetType.RECENTLY_ADDED -> GameRowWidget("Recently added", games.sortedByDescending { it.modified }.take(16), "new") { quick = it }
-                    WidgetType.RA_PROFILE -> RaProfileWidget()
+                    WidgetType.RA_PROFILE -> Unit
                     WidgetType.RA_RECENT -> Unit
-                    WidgetType.RA_PLAYED -> RaPlayedWidget()
+                    WidgetType.RA_PLAYED -> Unit
                     WidgetType.ROMM_LATEST -> RommLatestWidget()
                     WidgetType.RANDOM -> RandomWidget(games)
                     WidgetType.QUICK_APPS -> Unit
@@ -168,9 +164,6 @@ private fun HomeFeed() {
                 }
                 }
             }
-        }
-        if (enabled.lastOrNull() == WidgetType.HEADER && games.isEmpty()) {
-            item("empty") { GapIfNotEmpty(22.dp) { EmptyLibraryCard() } }
         }
     }
     quick?.let { g -> GameQuickSheet(g, "quick", onDismiss = { quick = null }) }
@@ -205,80 +198,6 @@ private fun EmptyLibraryCard() {
 
 // ---- Header --------------------------------------------------------------------------------
 
-@Composable
-private fun HeaderWidget() {
-    val settings = LocalSettings.current
-    val nav = LocalNav.current
-    val context = LocalContext.current
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var battery by remember { mutableIntStateOf(-1) }
-    var charging by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            context.getSystemService(BatteryManager::class.java)?.let { bm ->
-                battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 } ?: -1
-                charging = bm.isCharging
-            }
-            delay(1000L * (60 - Calendar.getInstance().get(Calendar.SECOND)).coerceAtLeast(1))
-        }
-    }
-    val time = SimpleDateFormat(if (settings.clock24h) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now))
-    val ampm = if (settings.clock24h) "" else SimpleDateFormat("a", Locale.getDefault()).format(Date(now))
-    val date = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date(now))
-    val hour = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
-    val greeting = when (hour) {
-        in 5..11 -> "Good morning"
-        in 12..17 -> "Good afternoon"
-        in 18..22 -> "Good evening"
-        else -> "Late night session"
-    }
-    Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 16.dp, top = 12.dp)) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(time, style = MaterialTheme.typography.displayLarge)
-                    if (ampm.isNotEmpty()) {
-                        Text(ampm, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
-                    }
-                }
-                Text(date, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                RoundIcon(Icons.Rounded.Search, "Search") { nav.navigate(Routes.SEARCH) }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val name = settings.greetingName.ifBlank { settings.raUser }
-            Text(
-                if (name.isBlank()) greeting else "$greeting, $name",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
-            )
-            if (settings.showBattery && battery >= 0) {
-                Row(
-                    Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        if (charging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryFull, null,
-                        modifier = Modifier.size(16.dp).rotate(90f),
-                        tint = if (battery <= 15 && !charging) Color(0xFFFF6B6B) else MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("$battery%", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
-    }
-}
-
-// ---- Continue playing ----------------------------------------------------------------------
-
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContinueWidget(games: List<Game>, isRecent: Boolean) {
     if (games.isEmpty()) return
@@ -381,49 +300,15 @@ private fun PlatformsWidget(games: List<Game>) {
     Column {
         SectionHeader("Platforms", action = "See all") { nav.navigate(Routes.LIBRARY) }
         Spacer(Modifier.height(8.dp))
+        // The same console cards as the Library tab.
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(ordered, key = { it.first }) { (system, list) ->
-                PlatformTile(system, list.size, list) { nav.navigate(Routes.platform(system)) }
+                PlatformCard(system, list, Modifier.width(150.dp)) { nav.navigate(Routes.platform(system)) }
             }
         }
     }
 }
 
-@Composable
-fun PlatformTile(system: String, count: Int, games: List<Game>, modifier: Modifier = Modifier.width(138.dp), onClick: () -> Unit) {
-    val color = systemColor(system)
-    val corner = LocalCorner.current
-    val graph = LocalGraph.current
-    val maker = graph.catalog.meta(system).maker
-    Box(
-        modifier.height(168.dp)
-            .shadow(10.dp, RoundedCornerShape(corner), ambientColor = color, spotColor = color)
-            .tappable(RoundedCornerShape(corner), onClick = onClick)
-            .background(Brush.linearGradient(listOf(lerp(color, Color.White, 0.08f), lerp(color, Color.Black, 0.55f))))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(corner))
-    ) {
-        // A fanned stack of three covers peeking from the corner.
-        val sample = remember(games) { games.take(3) }
-        sample.withIndex().reversed().forEach { (i, g) ->
-            GameCover(
-                g,
-                Modifier.align(Alignment.TopEnd).padding(top = 12.dp + (i * 6).dp, end = 10.dp + (i * 16).dp).width(54.dp)
-                    .graphicsLayer { rotationZ = 8f - i * 7f; alpha = 1f - i * 0.18f }
-                    .shadow(6.dp, RoundedCornerShape(8.dp)),
-                compact = true,
-            )
-        }
-        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-            Text(systemName(system), style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(
-                listOfNotNull(maker, gamesLabel(count)).joinToString(" · "),
-                style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.75f), maxLines = 1,
-            )
-        }
-    }
-}
-
-/** Systems with games, in the user's custom order (unlisted systems follow alphabetically). */
 @Composable
 fun rememberOrderedSystems(games: List<Game>): List<Pair<String, List<Game>>> {
     val settings = LocalSettings.current
@@ -477,83 +362,6 @@ private fun ConnectCard(title: String, body: String, page: SettingsPage) {
         }
     }
 }
-
-@Composable
-private fun RaProfileWidget() {
-    val graph = LocalGraph.current
-    val settings = LocalSettings.current
-    val nav = LocalNav.current
-    if (!settings.raConfigured) {
-        ConnectCard("Connect RetroAchievements", "See your points, progress and latest unlocks here.", SettingsPage.RA)
-        return
-    }
-    val profile by graph.ra.profile.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { graph.ra.refresh() }
-    Glass(Modifier.padding(horizontal = 20.dp).fillMaxWidth().tappable { nav.navigate(Routes.RA) }, padding = 16.dp) {
-        when (val p = profile) {
-            is Loadable.Ready -> Row(verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    raMedia(p.value.userPic), null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(58.dp).clip(CircleShape).border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                )
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(p.value.user, style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("${"%,d".format(p.value.totalPoints)} pts", style = MaterialTheme.typography.labelLarge, color = Color(0xFFFFC94D))
-                        if (p.value.totalSoftcorePoints > 0) {
-                            Text("${"%,d".format(p.value.totalSoftcorePoints)} softcore", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    p.value.richPresence?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                Icon(Icons.Rounded.EmojiEvents, null, tint = Color(0xFFFFC94D), modifier = Modifier.size(28.dp))
-            }
-            is Loadable.Error -> Text(p.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-            else -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Shimmer(Modifier.size(58.dp))
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Shimmer(Modifier.width(120.dp).height(16.dp)); Spacer(Modifier.height(8.dp)); Shimmer(Modifier.width(180.dp).height(12.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RaPlayedWidget() {
-    val graph = LocalGraph.current
-    val settings = LocalSettings.current
-    if (!settings.raConfigured) return
-    val played by graph.ra.played.collectAsStateWithLifecycle()
-    val list = (played as? Loadable.Ready)?.value?.filter { it.total > 0 }?.take(4) ?: return
-    if (list.isEmpty()) return
-    Column {
-        SectionHeader("Achievement progress")
-        Spacer(Modifier.height(8.dp))
-        Glass(Modifier.padding(horizontal = 20.dp).fillMaxWidth(), padding = 14.dp) {
-            list.forEachIndexed { i, g ->
-                if (i > 0) Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(raMedia(g.imageIcon), null, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(g.title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(5.dp))
-                        LinearMeter(g.progress, Modifier.fillMaxWidth())
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text("${maxOf(g.numAchieved, g.numAchievedHardcore)}/${g.total}", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
-    }
-}
-
-// ---- RomM ----------------------------------------------------------------------------------
 
 @Composable
 private fun RommLatestWidget() {
