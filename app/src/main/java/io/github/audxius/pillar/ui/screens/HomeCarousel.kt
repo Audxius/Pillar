@@ -397,14 +397,15 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                 } else settings.coverShape.ratio()
                 val reflection = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
                 val mirrorLayer = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
-                Box(contentAlignment = Alignment.TopCenter) {
-                if (coverFlow && settings.coverFlowMedia) PopOutMedia(g, focused && !state.isScrollInProgress, coverH * ratio, coverH, top = itemHeight * 0.02f + headroom)
+                // The headroom sits above the whole cover, so the cover and its reflection keep their size.
+                Box(Modifier.padding(top = headroom), contentAlignment = Alignment.TopCenter) {
+                if (coverFlow && settings.coverFlowMedia) PopOutMedia(g, focused && !state.isScrollInProgress, coverH * ratio, coverH, top = itemHeight * 0.02f)
                 GameCover(
                     g,
                     Modifier.height(coverH).width(coverH * ratio)
                         .then(
                             if (coverFlow) Modifier
-                                .padding(top = itemHeight * 0.02f + headroom)
+                                .padding(top = itemHeight * 0.02f)
                                 .graphicsLayer {
                                     // How far this cover is from the centre, in cover widths.
                                     val info = state.layoutInfo
@@ -457,7 +458,7 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
 }
 
 /** How far (in cover heights) the disc or cartridge rises above its case. */
-private const val MEDIA_RISE = 0.42f
+private const val MEDIA_RISE = 0.5f
 
 /** The game's real disc or cartridge rising out of the top of its case once it settles in the middle. */
 @Composable
