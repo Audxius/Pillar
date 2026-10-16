@@ -42,7 +42,7 @@ class SettingsMigrationTest {
         val old = PillarJson.decodeFromString(AppSettings.serializer(), """{"background":"AURORA","homeWidgets":[{"type":"QUICK_APPS"}]}""")
         val n = old.normalized()
         assertEquals(io.github.audxius.pillar.data.BackgroundStyle.STYLE, n.background)
-        assertEquals(4, n.schema)
+        assertEquals(5, n.schema)
         // A user choosing aurora again later keeps it.
         assertEquals(io.github.audxius.pillar.data.BackgroundStyle.AURORA, n.copy(background = io.github.audxius.pillar.data.BackgroundStyle.AURORA).normalized().background)
     }
@@ -55,5 +55,17 @@ class SettingsMigrationTest {
         val s = old.normalized()
         org.junit.Assert.assertEquals(io.github.audxius.pillar.data.UiStyle.GLASS, s.uiStyle)
         org.junit.Assert.assertEquals("aurora", s.palette)
+    }
+
+    @Test
+    fun allGamesMovesUnderContinuePlaying() {
+        val old = io.github.audxius.pillar.data.PillarJson.decodeFromString(
+            io.github.audxius.pillar.data.AppSettings.serializer(),
+            """{"schema":4,"homeWidgets":[{"type":"CONTINUE"},{"type":"RECENTLY_ADDED"},{"type":"ALL_GAMES","enabled":false}],"homeBrowse":"CHANNELS"}""",
+        )
+        val s = old.normalized()
+        org.junit.Assert.assertEquals(listOf("CONTINUE", "ALL_GAMES", "RECENTLY_ADDED"), s.homeWidgets.take(3).map { it.type.name })
+        org.junit.Assert.assertTrue(s.homeWidgets[1].enabled)
+        org.junit.Assert.assertEquals(io.github.audxius.pillar.data.HomeBrowse.GRID, s.homeBrowse)
     }
 }

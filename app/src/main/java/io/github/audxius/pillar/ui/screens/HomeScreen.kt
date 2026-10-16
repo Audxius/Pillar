@@ -61,7 +61,6 @@ import io.github.audxius.pillar.ui.components.GameCover
 import io.github.audxius.pillar.ui.components.GameTile
 import io.github.audxius.pillar.ui.components.GapIfNotEmpty
 import io.github.audxius.pillar.ui.components.Glass
-import io.github.audxius.pillar.ui.components.gamesLabel
 import io.github.audxius.pillar.ui.components.MultiImage
 import io.github.audxius.pillar.ui.components.SystemChip
 import io.github.audxius.pillar.ui.components.formatBytes

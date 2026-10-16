@@ -16,10 +16,10 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/saves.webp" width="23%" alt="Saves" />
 </p>
 <p align="center">
-  <img src="docs/browse-collection.webp" width="23%" alt="Collection" />
+  <img src="docs/browse-coverflow.webp" width="23%" alt="Cover flow" />
   <img src="docs/browse-shelf.webp" width="23%" alt="Shelf" />
   <img src="docs/browse-grid.webp" width="23%" alt="Grid" />
-  <img src="docs/browse-channels.webp" width="23%" alt="Channels" />
+  <img src="docs/browse-feed.webp" width="23%" alt="Widget feed" />
 </p>
 <p align="center">
   <img src="docs/style-aero.webp" width="18%" alt="Frutiger Aero" />
@@ -28,7 +28,7 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/style-wii.webp" width="18%" alt="Wii" />
   <img src="docs/style-grid.webp" width="18%" alt="Grid" />
 </p>
-<p align="center"><sub>Liquid Glass (top); Collection, Shelf, Grid and Channels; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
+<p align="center"><sub>Liquid Glass (top); Cover flow, Shelf, Grid and the widget feed; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
 
 ## Install
 
@@ -58,11 +58,10 @@ Android 8.0 or newer.
   cubes, HUD panels, chrome buttons); XMB (the PSP/PS3 wave, in its monthly colors); Wii (white
   pinstripes and Wii-blue rims); and Grid (8-bit era box art: a black grid on white, one bold
   color). Menu sounds to match each one.
-- **Seven ways to browse.** Covers; a big 3D cover flow; **Collection**, your real boxes in their
-  real shapes and sizes turning in 3D with their actual spines; a **Shelf** of real spines with the
-  selected game's 3D box and its disc or cartridge; an iiSU-style **Grid** of icons; Wii-style
-  **Channels**; or a **List**. Spines, backs, discs and cartridges come from LaunchBox's Games
-  Database (a one-time download) or from RomM when it scrapes ScreenScraper.
+- **Five ways to browse.** Covers; a big 3D cover flow; an iiSU-style **Grid** of icons (2 to 5
+  columns); a **Shelf** of official covers scrolling up and down, where the game in focus slides
+  its real disc or cartridge out; or a **List**. Disc and cartridge art comes from ES-DE's media
+  folder, RomM's ScreenScraper media, or LaunchBox's Games Database (a one-time download).
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -134,8 +133,8 @@ secrets: `PILLAR_KEYSTORE_BASE64`, `PILLAR_KEYSTORE_PASSWORD`, `PILLAR_KEY_ALIAS
 - [ES-DE](https://es-de.org) for the system and emulator definitions (MIT).
 - [RomM](https://romm.app), [RetroAchievements](https://retroachievements.org) and the
   [libretro thumbnails](https://thumbnails.libretro.com) project.
-- [LaunchBox Games Database](https://gamesdb.launchbox-app.com) for spines, back covers, 3D
-  boxes, discs and cartridges (downloaded on request).
+- [LaunchBox Games Database](https://gamesdb.launchbox-app.com) for disc and cartridge art
+  (downloaded on request).
 - [libretro-database](https://github.com/libretro/libretro-database) for the No-Intro checksum
   databases used to identify games (downloaded on demand).
 - [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) by Kyant (Apache 2.0) for the Liquid

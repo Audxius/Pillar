@@ -21,8 +21,6 @@ enum class MediaKind(val folders: List<String>) {
     HERO(listOf("fanart", "screenshots", "titlescreens")),
     LOGO(listOf("marquees")),
     SNAP(listOf("screenshots", "titlescreens")),
-    BACK(listOf("backcovers")),
-    BOX3D(listOf("3dboxes")),
     PHYSICAL(listOf("physicalmedia")),
 }
 
@@ -299,12 +297,8 @@ class LibraryRepository(
         }
     }.distinct()
 
-    /** ES-DE's extra box media for the shelf: back cover, 3D box and the disc or cartridge itself. */
-    fun shelfMedia(game: Game): Triple<String?, String?, String?> = Triple(
-        mediaFor(game, MediaKind.BACK).firstOrNull(),
-        mediaFor(game, MediaKind.BOX3D).firstOrNull(),
-        mediaFor(game, MediaKind.PHYSICAL).firstOrNull(),
-    )
+    /** ES-DE's photo of the disc or cartridge itself. */
+    fun physicalMedia(game: Game): String? = mediaFor(game, MediaKind.PHYSICAL).firstOrNull()
 
     /** Wide background art for heroes and game pages. */
     fun heroCandidates(game: Game, settings: AppSettings, user: UserData, art: ArtSet?): List<String> = buildList {

@@ -35,20 +35,20 @@ class BoxArtTest {
           </GameAlternateName>
           <GameImage>
             <DatabaseID>10</DatabaseID>
-            <FileName>spine-jp.jpg</FileName>
-            <Type>Box - Spine</Type>
+            <FileName>cart-jp.png</FileName>
+            <Type>Cart - Front</Type>
             <Region>Japan</Region>
           </GameImage>
           <GameImage>
             <DatabaseID>10</DatabaseID>
-            <FileName>spine-us.jpg</FileName>
-            <Type>Box - Spine</Type>
+            <FileName>cart-us.png</FileName>
+            <Type>Cart - Front</Type>
             <Region>North America</Region>
           </GameImage>
           <GameImage>
             <DatabaseID>99</DatabaseID>
-            <FileName>pc-back.jpg</FileName>
-            <Type>Box - Back</Type>
+            <FileName>pc-disc.png</FileName>
+            <Type>Disc</Type>
           </GameImage>
           <GameImage>
             <DatabaseID>11</DatabaseID>
@@ -62,9 +62,9 @@ class BoxArtTest {
     fun matchesByPlatformNameAndRegion() {
         val games = listOf(game("sm", "snes", "Super Metroid (USA).sfc"), game("eb", "snes", "EarthBound (USA).sfc"))
         val art = BoxArtMatcher.match(xml.reader().buffered(), BoxArtMatcher.wantedFor(games, emptyMap()))
-        assertEquals(BoxArtMatcher.IMAGE_BASE + "spine-us.jpg", art["sm"]?.spine)
-        // The Windows release's back cover must not leak onto the SNES game.
-        assertNull(art["sm"]?.back)
+        assertEquals(BoxArtMatcher.IMAGE_BASE + "cart-us.png", art["sm"]?.cart)
+        // The Windows release's disc must not leak onto the SNES game.
+        assertNull(art["sm"]?.disc)
         assertEquals(BoxArtMatcher.IMAGE_BASE + "eb-cart.jpg", art["eb"]?.cart)
     }
 

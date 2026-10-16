@@ -18,19 +18,15 @@ import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
-/** Physical box art for one game: spine, back, 3D box, and the disc or cartridge itself. */
+/** A game's disc or cartridge art. */
 @Serializable
 data class BoxArt(
-    val spine: String? = null,
-    val back: String? = null,
-    val box3d: String? = null,
     val disc: String? = null,
     val cart: String? = null,
 )
 
 /**
- * Matches games against LaunchBox's community Games Database (spines, backs, 3D boxes, discs and
- * cartridges). The database is one big file, so it's streamed once and only the entries for your
+ * Matches games against LaunchBox's community Games Database for disc and cartridge art. The database is one big file, so it's streamed once and only the entries for your
  * own games are kept; the images themselves load from LaunchBox's image server when shown.
  */
 object BoxArtMatcher {
@@ -61,7 +57,7 @@ object BoxArtMatcher {
     )
 
     private val wantedTypes = mapOf(
-        "Box - Spine" to "spine", "Box - Back" to "back", "Box - 3D" to "box3d", "Disc" to "disc", "Cart - Front" to "cart",
+        "Disc" to "disc", "Cart - Front" to "cart",
     )
 
     class Wanted(val gameId: String, val system: String, val keys: Set<String>, val region: String?)
@@ -151,7 +147,7 @@ object BoxArtMatcher {
         }
         return found.mapValues { (_, t) ->
             fun u(k: String) = t[k]?.second?.let { IMAGE_BASE + it }
-            BoxArt(spine = u("spine"), back = u("back"), box3d = u("box3d"), disc = u("disc"), cart = u("cart"))
+            BoxArt(disc = u("disc"), cart = u("cart"))
         }
     }
 

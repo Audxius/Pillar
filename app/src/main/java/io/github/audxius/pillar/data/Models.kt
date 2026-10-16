@@ -18,6 +18,7 @@ val PillarJson = Json {
 @Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA, POCKET, GRID }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
 /** How the carousel home browses games. */
+/** CHANNELS and COLLECTION were removed in 1.2; they stay so saved settings still load. */
 @Serializable enum class HomeBrowse { COVERS, COVERFLOW, LIST, CHANNELS, SHELF, COLLECTION, GRID }
 
 /** Which artwork fills game tiles. */
@@ -65,11 +66,11 @@ val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT, WidgetTy
 
 val DefaultWidgets = listOf(
     WidgetConfig(WidgetType.CONTINUE),
+    WidgetConfig(WidgetType.ALL_GAMES),
     WidgetConfig(WidgetType.FAVORITES),
     WidgetConfig(WidgetType.RECENTLY_ADDED),
     WidgetConfig(WidgetType.RANDOM),
     WidgetConfig(WidgetType.STATS, enabled = false),
-    WidgetConfig(WidgetType.ALL_GAMES),
 )
 
 @Serializable
@@ -115,6 +116,8 @@ data class AppSettings(
     val coverCrop: Boolean = false,
     val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
     val homeBrowse: HomeBrowse = HomeBrowse.COVERS,
+    /** Columns in the home Grid view. */
+    val homeGridColumns: Int = 3,
     /** Menu sound effects (taps, back, carousel ticks), in each style's own flavor. */
     val menuSounds: Boolean = true,
     /** RetroArch cores the user confirmed are installed (Android can't list them for other apps). */
@@ -191,11 +194,21 @@ data class AppSettings(
             font = if (s.font == AppFont.NUNITO) AppFont.OUTFIT else s.font,
             cornerRadius = if (s.cornerRadius == 22) 24 else s.cornerRadius,
         )
+        // 1.2: Channels and Collection were removed.
+        if (s.homeBrowse == HomeBrowse.CHANNELS) s = s.copy(homeBrowse = HomeBrowse.GRID)
+        if (s.homeBrowse == HomeBrowse.COLLECTION) s = s.copy(homeBrowse = HomeBrowse.COVERFLOW)
         // 0.11: "All games" replaced "New on RomM" on the widget home, switched on.
         if (s.schema < 4) s = s.copy(
             schema = 4,
             homeWidgets = s.homeWidgets.map { if (it.type == WidgetType.ALL_GAMES) it.copy(enabled = true) else it },
         )
+        // 1.2: "All games" sits right under "Continue playing", above "Recently added".
+        if (s.schema < 5) {
+            val rest = s.homeWidgets.filter { it.type != WidgetType.ALL_GAMES }
+            val all = s.homeWidgets.firstOrNull { it.type == WidgetType.ALL_GAMES } ?: WidgetConfig(WidgetType.ALL_GAMES)
+            val at = rest.indexOfFirst { it.type == WidgetType.CONTINUE }.let { if (it >= 0) it + 1 else 0 }
+            s = s.copy(schema = 5, homeWidgets = rest.take(at) + all.copy(enabled = true) + rest.drop(at))
+        }
         return s
     }
 }
