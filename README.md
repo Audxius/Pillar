@@ -17,7 +17,7 @@ progress. Almost everything about how it looks can be changed.
 </p>
 <p align="center">
   <img src="docs/browse-coverflow.webp" width="23%" alt="Cover flow" />
-  <img src="docs/browse-shelf.webp" width="23%" alt="Shelf" />
+  <img src="docs/browse-list.webp" width="23%" alt="List" />
   <img src="docs/browse-grid.webp" width="23%" alt="Grid" />
   <img src="docs/browse-feed.webp" width="23%" alt="Widget feed" />
 </p>
@@ -28,7 +28,7 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/style-wii.webp" width="18%" alt="Wii" />
   <img src="docs/style-grid.webp" width="18%" alt="Grid" />
 </p>
-<p align="center"><sub>Liquid Glass (top); Cover flow, Shelf, Grid and the widget feed; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
+<p align="center"><sub>Liquid Glass (top); Cover flow, List, Grid and the widget feed; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
 
 ## Install
 
@@ -58,10 +58,10 @@ Android 8.0 or newer.
   cubes, HUD panels, chrome buttons); XMB (the PSP/PS3 wave, in its monthly colors); Wii (white
   pinstripes and Wii-blue rims); and Grid (8-bit era box art: a black grid on white, one bold
   color). Menu sounds to match each one.
-- **Five ways to browse.** Covers; a big 3D cover flow; an iiSU-style **Grid** of icons (2 to 5
-  columns); a **Shelf** of official covers scrolling up and down, where the game in focus slides
-  its real disc or cartridge out; or a **List**. Disc and cartridge art comes from ES-DE's media
-  folder, RomM's ScreenScraper media, or LaunchBox's Games Database (a one-time download).
+- **Four ways to browse.** Covers; a big 3D cover flow where the game in the middle can slide
+  its real disc or cartridge out of the case; an iiSU-style **Grid** of icons (2 to 5 columns);
+  or a **List**. Disc and cartridge art comes from ES-DE's media folder, RomM's ScreenScraper
+  media, or LaunchBox's Games Database (a one-time download).
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -98,8 +98,8 @@ Android 8.0 or newer.
   - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
     blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
-  - Widget home layout: continue playing, favorites, recently added, all games (by recently
-    played), random pick and stats, which you can toggle and reorder.
+  - Widget home layout: continue playing, recent (your whole library by recently played),
+    favorites, recently added, random pick and stats, which you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.
   - Export and import all of it as a backup file.

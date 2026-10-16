@@ -132,7 +132,7 @@ private fun HomeFeed() {
                     WidgetType.RA_RECENT -> Unit
                     WidgetType.RA_PLAYED -> Unit
                     WidgetType.ROMM_LATEST -> Unit
-                    WidgetType.ALL_GAMES -> GameRowWidget("All games", byRecent, "all") { quick = it }
+                    WidgetType.ALL_GAMES -> GameRowWidget("Recent", byRecent, "all") { quick = it }
                     WidgetType.RANDOM -> RandomWidget(games)
                     WidgetType.QUICK_APPS -> Unit
                     WidgetType.STATS -> StatsWidget(games)

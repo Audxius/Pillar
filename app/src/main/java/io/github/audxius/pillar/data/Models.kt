@@ -18,7 +18,7 @@ val PillarJson = Json {
 @Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA, POCKET, GRID }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
 /** How the carousel home browses games. */
-/** CHANNELS and COLLECTION were removed in 1.2; they stay so saved settings still load. */
+/** CHANNELS, COLLECTION and SHELF were removed; they stay so saved settings still load. */
 @Serializable enum class HomeBrowse { COVERS, COVERFLOW, LIST, CHANNELS, SHELF, COLLECTION, GRID }
 
 /** Which artwork fills game tiles. */
@@ -52,7 +52,7 @@ enum class WidgetType(val title: String, val description: String) {
     // Removed in 0.2 (Pillar is not a launcher); kept only so older saved layouts still load.
     QUICK_APPS("Quick apps", "Removed"),
     STATS("Library stats", "Counts across your collection"),
-    ALL_GAMES("All games", "Your whole library, most recently played first"),
+    ALL_GAMES("Recent", "Your whole library, most recently played first"),
 }
 
 @Serializable
@@ -116,6 +116,8 @@ data class AppSettings(
     val coverCrop: Boolean = false,
     val homeLayout: HomeLayout = HomeLayout.CAROUSEL,
     val homeBrowse: HomeBrowse = HomeBrowse.COVERS,
+    /** In cover flow, the centred game's disc or cartridge rises out of its case. */
+    val coverFlowMedia: Boolean = true,
     /** Columns in the home Grid view. */
     val homeGridColumns: Int = 3,
     /** Menu sound effects (taps, back, carousel ticks), in each style's own flavor. */
@@ -197,6 +199,8 @@ data class AppSettings(
         // 1.2: Channels and Collection were removed.
         if (s.homeBrowse == HomeBrowse.CHANNELS) s = s.copy(homeBrowse = HomeBrowse.GRID)
         if (s.homeBrowse == HomeBrowse.COLLECTION) s = s.copy(homeBrowse = HomeBrowse.COVERFLOW)
+        // 1.3: Shelf became cover flow's disc/cartridge option.
+        if (s.homeBrowse == HomeBrowse.SHELF) s = s.copy(homeBrowse = HomeBrowse.COVERFLOW, coverFlowMedia = true)
         // 0.11: "All games" replaced "New on RomM" on the widget home, switched on.
         if (s.schema < 4) s = s.copy(
             schema = 4,

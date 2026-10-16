@@ -393,12 +393,18 @@ private fun HomePage() {
                 io.github.audxius.pillar.data.HomeBrowse.COVERS to "Covers",
                 io.github.audxius.pillar.data.HomeBrowse.COVERFLOW to "Cover flow",
                 io.github.audxius.pillar.data.HomeBrowse.GRID to "Grid",
-                io.github.audxius.pillar.data.HomeBrowse.SHELF to "Shelf",
                 io.github.audxius.pillar.data.HomeBrowse.LIST to "List",
             ),
             s.homeBrowse,
-            description = "Covers: a sideways carousel. Cover flow: covers turning in 3D. Grid: icons in a grid. Shelf: covers scrolling up and down, each one's disc or cartridge sliding out. List: titles scrolling up and down.",
+            description = "Covers: a sideways carousel. Cover flow: covers turning in 3D. Grid: icons in a grid. List: titles scrolling up and down.",
         ) { v -> update { it.copy(homeBrowse = v) } }
+        if (s.homeLayout == HomeLayout.CAROUSEL && s.homeBrowse == io.github.audxius.pillar.data.HomeBrowse.COVERFLOW) {
+            SettingSwitch(
+                "Disc or cartridge slides out",
+                "The game in the middle shows its real disc or cartridge rising out of the case (art from your media folder, RomM or the box art database in Settings → Library)",
+                s.coverFlowMedia,
+            ) { v -> update { it.copy(coverFlowMedia = v) } }
+        }
         if (s.homeLayout == HomeLayout.CAROUSEL && s.homeBrowse == io.github.audxius.pillar.data.HomeBrowse.GRID) {
             SettingSlider("Grid columns", s.homeGridColumns.toFloat(), 2f..5f, steps = 2, label = { "${it.toInt()}" }) { v -> update { it.copy(homeGridColumns = v.toInt()) } }
         }
@@ -535,7 +541,7 @@ private fun LibraryPage() {
         val allGames by graph.allGames.collectAsStateWithLifecycle()
         val user = io.github.audxius.pillar.ui.theme.LocalUserData.current
         Text(
-            "Real disc and cartridge art for the Shelf, from LaunchBox's community Games Database. " +
+            "Real disc and cartridge art for cover flow, from LaunchBox's community Games Database. " +
                 "It's one ~110 MB download that Pillar reads once, keeping only your games' entries. Run it again after adding games.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),

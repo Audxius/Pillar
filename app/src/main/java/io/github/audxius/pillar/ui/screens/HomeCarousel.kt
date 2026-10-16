@@ -204,12 +204,11 @@ fun HomeCarouselScreen() {
             }
             when (browse) {
                 io.github.audxius.pillar.data.HomeBrowse.LIST -> GameWheel(ordered, listState, selectedIndex, Modifier.weight(1f), onLongPress = { quick = it })
-                io.github.audxius.pillar.data.HomeBrowse.SHELF -> Shelf(ordered, listState, selectedIndex, Modifier.weight(1f), onLongPress = { quick = it })
                 io.github.audxius.pillar.data.HomeBrowse.GRID -> IconGrid(ordered, chosen, { chosen = it }, Modifier.weight(1f), onLongPress = { quick = it })
                 io.github.audxius.pillar.data.HomeBrowse.COVERFLOW -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     // Big, but narrow enough that the neighbours on both sides stay in view.
                     val ratio = LocalSettings.current.coverShape.ratio()
-                    Carousel(ordered, listState, selectedIndex, minOf((maxHeight - 20.dp) / 1.12f, maxWidth * 0.6f / (ratio * 0.9f)), coverFlow = true, onLongPress = { quick = it })
+                    Carousel(ordered, listState, selectedIndex, minOf((maxHeight - 20.dp) / 1.12f, maxWidth * 0.5f / (ratio * 0.9f)), coverFlow = true, onLongPress = { quick = it })
                 }
                 else -> Carousel(ordered, listState, selectedIndex, itemHeight, coverFlow = false, onLongPress = { quick = it })
             }
@@ -222,8 +221,11 @@ fun HomeCarouselScreen() {
             // Without the logo on top, Play sits under the games, within easy reach of a thumb.
             if (compact) {
                 Spacer(Modifier.height(8.dp))
-                GameMetaPills(selected, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
-                Spacer(Modifier.height(10.dp))
+                // The list shows each game's console and last played in its own row.
+                if (browse != io.github.audxius.pillar.data.HomeBrowse.LIST) {
+                    GameMetaPills(selected, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                    Spacer(Modifier.height(10.dp))
+                }
                 HomePlayButton(selected)
                 Spacer(Modifier.height(4.dp))
             }
@@ -389,6 +391,8 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                 } else settings.coverShape.ratio()
                 val reflection = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
                 val mirrorLayer = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
+                Box(contentAlignment = Alignment.TopCenter) {
+                if (coverFlow && settings.coverFlowMedia) PopOutMedia(g, focused && !state.isScrollInProgress, coverH * ratio, coverH)
                 GameCover(
                     g,
                     Modifier.height(coverH).width(coverH * ratio)
@@ -438,9 +442,26 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                     ratio = ratio,
                     compact = true,
                 )
+                }
             }
         }
     }
+}
+
+/** The game's real disc or cartridge rising out of the top of its case once it settles in the middle. */
+@Composable
+private fun PopOutMedia(g: Game, out: Boolean, coverW: Dp, coverH: Dp) {
+    val graph = LocalGraph.current
+    val boxArt by graph.boxArt.art.collectAsStateWithLifecycle()
+    val media = boxArt[g.id]?.let { it.disc ?: it.cart } ?: remember(g.id) { graph.physicalMedia(g) } ?: return
+    val slide by animateFloatAsState(if (out) 1f else 0f, spring(dampingRatio = 0.75f, stiffness = 220f), label = "media")
+    if (slide < 0.01f) return
+    Box(
+        Modifier.size(coverW * 0.86f).graphicsLayer {
+            translationY = -slide * coverH.toPx() * 0.42f
+            alpha = slide
+        },
+    ) { MultiImage(listOf(media), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit, decodeSize = 600) {} }
 }
 
 /** Scrolls so the item's center lands exactly on the viewport's center, whatever the padding or item sizes. */
@@ -466,7 +487,7 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
             pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
         }
     }
-    val rowHeight = 124.dp
+    val rowHeight = 144.dp
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val pad = ((maxHeight - rowHeight) / 2).coerceAtLeast(0.dp)
         LazyColumn(
@@ -521,79 +542,6 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
 }
 
 /**
- * Shelf: the official covers scrolling up and down. The game that settles in the middle slides its
- * actual disc or cartridge out to the side, and tucks it back in as you scroll on.
- */
-@Composable
-private fun Shelf(games: List<Game>, state: LazyListState, selectedIndex: Int, modifier: Modifier, onLongPress: (Game) -> Unit) {
-    val graph = LocalGraph.current
-    val nav = LocalNav.current
-    val scope = rememberCoroutineScope()
-    val boxArt by graph.boxArt.art.collectAsStateWithLifecycle()
-    var tapJob by remember { mutableStateOf<Job?>(null) }
-    var pressedWhileMoving by remember { mutableStateOf(false) }
-    val catchMoving = Modifier.pointerInput(state) {
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-            pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
-        }
-    }
-    BoxWithConstraints(modifier.fillMaxWidth().graphicsLayer()) {
-        val rowH = (maxHeight * 0.46f).coerceAtMost(300.dp)
-        val pad = ((maxHeight - rowH) / 2).coerceAtLeast(0.dp)
-        LazyColumn(
-            state = state,
-            flingBehavior = rememberSnapFlingBehavior(state),
-            contentPadding = PaddingValues(vertical = pad),
-            modifier = Modifier.fillMaxSize().then(catchMoving),
-        ) {
-            itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
-                // Out only once the game has settled in the middle.
-                val out = index == selectedIndex && !state.isScrollInProgress
-                val slide by animateFloatAsState(if (out) 1f else 0f, spring(dampingRatio = 0.75f, stiffness = 220f), label = "media")
-                val focus by animateFloatAsState(if (index == selectedIndex) 1f else 0f, label = "focus")
-                val art = boxArt[g.id]
-                val media = art?.disc ?: art?.cart ?: remember(g.id) { graph.physicalMedia(g) }
-                val aspect = (io.github.audxius.pillar.ui.components.rememberAspect(g) ?: graph.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.6f)
-                val coverH = rowH * 0.9f
-                val coverW = coverH * aspect
-                Box(
-                    Modifier.fillMaxWidth().height(rowH)
-                        .graphicsLayer { val sc = 0.82f + 0.18f * focus; scaleX = sc; scaleY = sc; alpha = 0.55f + 0.45f * focus },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // Shift the pair left as the media comes out, so both stay centred together.
-                    Box(Modifier.graphicsLayer { translationX = -slide * coverW.toPx() * 0.28f }, contentAlignment = Alignment.Center) {
-                        if (media != null) {
-                            Box(
-                                Modifier.size(coverH * 0.86f).graphicsLayer {
-                                    translationX = slide * coverW.toPx() * 0.62f
-                                    rotationZ = slide * 20f
-                                    alpha = slide
-                                },
-                            ) { MultiImage(listOf(media), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit, decodeSize = 600) {} }
-                        }
-                        GameCover(
-                            g,
-                            Modifier.height(coverH).width(coverW).shadow(14.dp, RoundedCornerShape(4.dp))
-                                .tappable(RoundedCornerShape(4.dp), onLongClick = { onLongPress(g) }) {
-                                    when {
-                                        pressedWhileMoving -> pressedWhileMoving = false
-                                        index == selectedIndex && !state.isScrollInProgress -> nav.navigate(Routes.game(g.id, "home"))
-                                        else -> { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
-                                    }
-                                },
-                            ratio = aspect,
-                            compact = true,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
  * Grid, like iiSU: a panel of rounded square icons with a wide "Jump back in" tile first. Tap to
  * select (its name shows above), tap again to open.
  */
@@ -605,14 +553,6 @@ private fun IconGrid(games: List<Game>, chosen: Int, onChoose: (Int) -> Unit, mo
     val last = remember(games, user.lastPlayed) { games.firstOrNull { (user.lastPlayed[it.id] ?: 0) > 0 } }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     Column(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-        // The selected game's name, in a pill.
-        val sel = games.getOrNull(chosen)
-        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
-            if (sel != null) Text(
-                gameTitle(sel), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.styledSurface(RoundedCornerShape(50)).padding(horizontal = 16.dp, vertical = 7.dp),
-            )
-        }
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
             androidx.compose.foundation.lazy.grid.GridCells.Fixed(LocalSettings.current.homeGridColumns.coerceIn(2, 5)),
             state = gridState,
