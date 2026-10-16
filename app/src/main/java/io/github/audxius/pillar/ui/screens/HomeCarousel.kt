@@ -205,14 +205,19 @@ fun HomeCarouselScreen() {
             when (browse) {
                 io.github.audxius.pillar.data.HomeBrowse.LIST -> GameWheel(ordered, listState, selectedIndex, Modifier.weight(1f), onLongPress = { quick = it })
                 io.github.audxius.pillar.data.HomeBrowse.GRID -> IconGrid(ordered, chosen, { chosen = it }, Modifier.weight(1f), onLongPress = { quick = it })
-                io.github.audxius.pillar.data.HomeBrowse.COVERFLOW -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    // Big, but narrow enough that the neighbours on both sides stay in view.
+                io.github.audxius.pillar.data.HomeBrowse.COVERFLOW -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                    // Big, but narrow enough that the neighbours on both sides stay in view, and with
+                    // headroom above for the disc or cartridge that rises out of the centre case.
                     val ratio = LocalSettings.current.coverShape.ratio()
-                    Carousel(ordered, listState, selectedIndex, minOf((maxHeight - 20.dp) / 1.12f, maxWidth * 0.6f / (ratio * 0.9f)), coverFlow = true, onLongPress = { quick = it })
+                    val media = LocalSettings.current.coverFlowMedia
+                    val room = if (media) (maxHeight - 20.dp) / (1.12f + MEDIA_RISE) else (maxHeight - 20.dp) / 1.12f
+                    val h = minOf(room, maxWidth * 0.6f / (ratio * 0.9f))
+                    Carousel(ordered, listState, selectedIndex, h, coverFlow = true, onLongPress = { quick = it }, headroom = if (media) h * 0.9f * MEDIA_RISE else 0.dp)
                 }
                 else -> Carousel(ordered, listState, selectedIndex, itemHeight, coverFlow = false, onLongPress = { quick = it })
             }
-            if (browse != io.github.audxius.pillar.data.HomeBrowse.GRID) Text(
+            // Cover flow's box art says it all: no counter or pills, more room for the covers.
+            if (browse != io.github.audxius.pillar.data.HomeBrowse.GRID && browse != io.github.audxius.pillar.data.HomeBrowse.COVERFLOW) Text(
                 "${selectedIndex + 1} / ${ordered.size}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -222,7 +227,7 @@ fun HomeCarouselScreen() {
             if (compact) {
                 Spacer(Modifier.height(8.dp))
                 // The list shows each game's console and last played in its own row.
-                if (browse != io.github.audxius.pillar.data.HomeBrowse.LIST) {
+                if (browse != io.github.audxius.pillar.data.HomeBrowse.LIST && browse != io.github.audxius.pillar.data.HomeBrowse.COVERFLOW) {
                     GameMetaPills(selected, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
                     Spacer(Modifier.height(10.dp))
                 }
@@ -352,7 +357,7 @@ fun TitleOrLogo(g: Game, maxWidth: Dp = 260.dp, maxHeight: Dp = 72.dp, alignment
 }
 
 @Composable
-private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, itemHeight: Dp, coverFlow: Boolean, onLongPress: (Game) -> Unit) {
+private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int, itemHeight: Dp, coverFlow: Boolean, onLongPress: (Game) -> Unit, headroom: Dp = 0.dp) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
     val nav = LocalNav.current
@@ -370,7 +375,8 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
     }
     // Cover flow: WiiFlow-style 3D covers with reflections on a glossy floor.
     val coverH = if (coverFlow) itemHeight * 0.9f else itemHeight
-    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp).graphicsLayer()) {
+    // The row clips what it draws, so the room for a rising disc or cartridge is part of it.
+    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp + headroom).graphicsLayer()) {
         // Side padding that lets the first and last cover sit in the middle.
         val side = ((maxWidth - coverH * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
         LazyRow(
@@ -392,13 +398,13 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                 val reflection = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
                 val mirrorLayer = if (coverFlow) androidx.compose.ui.graphics.rememberGraphicsLayer() else null
                 Box(contentAlignment = Alignment.TopCenter) {
-                if (coverFlow && settings.coverFlowMedia) PopOutMedia(g, focused && !state.isScrollInProgress, coverH * ratio, coverH)
+                if (coverFlow && settings.coverFlowMedia) PopOutMedia(g, focused && !state.isScrollInProgress, coverH * ratio, coverH, top = itemHeight * 0.02f + headroom)
                 GameCover(
                     g,
                     Modifier.height(coverH).width(coverH * ratio)
                         .then(
                             if (coverFlow) Modifier
-                                .padding(top = itemHeight * 0.02f)
+                                .padding(top = itemHeight * 0.02f + headroom)
                                 .graphicsLayer {
                                     // How far this cover is from the centre, in cover widths.
                                     val info = state.layoutInfo
@@ -450,17 +456,20 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
     }
 }
 
+/** How far (in cover heights) the disc or cartridge rises above its case. */
+private const val MEDIA_RISE = 0.42f
+
 /** The game's real disc or cartridge rising out of the top of its case once it settles in the middle. */
 @Composable
-private fun PopOutMedia(g: Game, out: Boolean, coverW: Dp, coverH: Dp) {
+private fun PopOutMedia(g: Game, out: Boolean, coverW: Dp, coverH: Dp, top: Dp) {
     val graph = LocalGraph.current
     val boxArt by graph.boxArt.art.collectAsStateWithLifecycle()
     val media = boxArt[g.id]?.let { it.disc ?: it.cart } ?: remember(g.id) { graph.physicalMedia(g) } ?: return
     val slide by animateFloatAsState(if (out) 1f else 0f, spring(dampingRatio = 0.75f, stiffness = 220f), label = "media")
     if (slide < 0.01f) return
     Box(
-        Modifier.size(coverW * 0.86f).graphicsLayer {
-            translationY = -slide * coverH.toPx() * 0.42f
+        Modifier.padding(top = top).size(coverW * 0.86f).graphicsLayer {
+            translationY = -slide * coverH.toPx() * MEDIA_RISE
             alpha = slide
         },
     ) { MultiImage(listOf(media), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit, decodeSize = 600) {} }
