@@ -210,7 +210,7 @@ fun HomeCarouselScreen() {
                     // headroom above for the disc or cartridge that rises out of the centre case.
                     val ratio = LocalSettings.current.coverShape.ratio()
                     val media = LocalSettings.current.coverFlowMedia
-                    val room = if (media) (maxHeight - 20.dp) / (1.12f + MEDIA_RISE) else (maxHeight - 20.dp) / 1.12f
+                    val room = if (media) (maxHeight - 20.dp) / (REFLECTION_ROOM + MEDIA_RISE) else (maxHeight - 20.dp) / REFLECTION_ROOM
                     val h = minOf(room, maxWidth * 0.6f / (ratio * 0.9f))
                     Carousel(ordered, listState, selectedIndex, h, coverFlow = true, onLongPress = { quick = it }, headroom = if (media) h * 0.9f * MEDIA_RISE else 0.dp)
                 }
@@ -376,7 +376,7 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
     // Cover flow: WiiFlow-style 3D covers with reflections on a glossy floor.
     val coverH = if (coverFlow) itemHeight * 0.9f else itemHeight
     // The row clips what it draws, so the room for a rising disc or cartridge is part of it.
-    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * 1.12f + 8.dp + headroom).graphicsLayer()) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight * (if (coverFlow) REFLECTION_ROOM else 1.12f) + 8.dp + headroom).graphicsLayer()) {
         // Side padding that lets the first and last cover sit in the middle.
         val side = ((maxWidth - coverH * settings.coverShape.ratio()) / 2).coerceAtLeast(0.dp)
         LazyRow(
@@ -459,6 +459,9 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
 
 /** How far (in cover heights) the disc or cartridge rises above its case. */
 private const val MEDIA_RISE = 0.5f
+
+/** Cover flow height per cover height: the cover plus a short strip for its reflection. */
+private const val REFLECTION_ROOM = 1.05f
 
 /** The game's real disc or cartridge rising out of the top of its case once it settles in the middle. */
 @Composable
