@@ -208,7 +208,7 @@ fun HomeCarouselScreen() {
                 io.github.audxius.pillar.data.HomeBrowse.COVERFLOW -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     // Big, but narrow enough that the neighbours on both sides stay in view.
                     val ratio = LocalSettings.current.coverShape.ratio()
-                    Carousel(ordered, listState, selectedIndex, minOf((maxHeight - 20.dp) / 1.12f, maxWidth * 0.5f / (ratio * 0.9f)), coverFlow = true, onLongPress = { quick = it })
+                    Carousel(ordered, listState, selectedIndex, minOf((maxHeight - 20.dp) / 1.12f, maxWidth * 0.6f / (ratio * 0.9f)), coverFlow = true, onLongPress = { quick = it })
                 }
                 else -> Carousel(ordered, listState, selectedIndex, itemHeight, coverFlow = false, onLongPress = { quick = it })
             }
@@ -378,7 +378,7 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
             flingBehavior = rememberSnapFlingBehavior(state),
             contentPadding = PaddingValues(horizontal = side),
             // Cover flow keeps a gap wide enough that turning covers never cut into each other.
-            horizontalArrangement = Arrangement.spacedBy(if (coverFlow) 18.dp else 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (coverFlow) 8.dp else 14.dp),
             verticalAlignment = if (coverFlow) Alignment.Top else Alignment.CenterVertically,
             modifier = Modifier.fillMaxHeight().then(catchMoving),
         ) {
@@ -410,6 +410,8 @@ private fun Carousel(games: List<Game>, state: LazyListState, selectedIndex: Int
                                     // The centre cover is full size (never bigger than its slot, so it never covers Play).
                                     val sc = 1f - minOf(abs(c), 1f) * 0.16f
                                     scaleX = sc; scaleY = sc
+                                    // Close only the gap the shrink and turn leave, so neighbours peek in without overlapping.
+                                    translationX = -kotlin.math.sign(c) * minOf(abs(c), 1f) * size.width * 0.12f
                                     cameraDistance = 14f * density
                                 }
                                 .drawWithContent {
