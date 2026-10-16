@@ -16,10 +16,10 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/saves.webp" width="23%" alt="Saves" />
 </p>
 <p align="center">
+  <img src="docs/browse-collection.webp" width="23%" alt="Collection" />
   <img src="docs/browse-shelf.webp" width="23%" alt="Shelf" />
-  <img src="docs/browse-coverflow.webp" width="23%" alt="Cover flow" />
+  <img src="docs/browse-grid.webp" width="23%" alt="Grid" />
   <img src="docs/browse-channels.webp" width="23%" alt="Channels" />
-  <img src="docs/browse-list.webp" width="23%" alt="List" />
 </p>
 <p align="center">
   <img src="docs/style-aero.webp" width="18%" alt="Frutiger Aero" />
@@ -28,7 +28,7 @@ progress. Almost everything about how it looks can be changed.
   <img src="docs/style-wii.webp" width="18%" alt="Wii" />
   <img src="docs/style-grid.webp" width="18%" alt="Grid" />
 </p>
-<p align="center"><sub>Liquid Glass (top); Shelf, Cover flow, Channels and List; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
+<p align="center"><sub>Liquid Glass (top); Collection, Shelf, Grid and Channels; Frutiger Aero, Y2K, XMB, Wii and Grid</sub></p>
 
 ## Install
 
@@ -58,9 +58,11 @@ Android 8.0 or newer.
   cubes, HUD panels, chrome buttons); XMB (the PSP/PS3 wave, in its monthly colors); Wii (white
   pinstripes and Wii-blue rims); and Grid (8-bit era box art: a black grid on white, one bold
   color). Menu sounds to match each one.
-- **Five ways to browse.** Covers, a big 3D cover flow, a shelf of real game spines with the
-  selected game's 3D box and its actual disc or cartridge (from LaunchBox's Games Database, a
-  one-time download), pages of screenshot banners like the Homebrew Channel, or a vertical list.
+- **Seven ways to browse.** Covers; a big 3D cover flow; **Collection**, your real boxes in their
+  real shapes and sizes turning in 3D with their actual spines; a **Shelf** of real spines with the
+  selected game's 3D box and its disc or cartridge; an iiSU-style **Grid** of icons; Wii-style
+  **Channels**; or a **List**. Spines, backs, discs and cartridges come from LaunchBox's Games
+  Database (a one-time download) or from RomM when it scrapes ScreenScraper.
 - **One library.** Games on your phone and on your RomM server show up together; RomM-only games
   have a cloud badge, and Play downloads them, then starts them.
 - **Your library.** Point it at your ROMs folder (one sub-folder per system, the same layout as
@@ -97,8 +99,8 @@ Android 8.0 or newer.
   - Background: the focused game's art, animated aurora, gradient, solid or your own image (with
     blur and dim), tinted by the platform or game on screen.
   - Corner roundness, frosted or solid cards, cover shape, grid columns, titles on/off.
-  - Widget home layout: continue playing, platforms, favorites, recently added, random pick,
-    stats and your whole library by recently played, which you can toggle and reorder.
+  - Widget home layout: continue playing, favorites, recently added, all games (by recently
+    played), random pick and stats, which you can toggle and reorder.
   - Platforms: show, hide, rename, recolor and reorder.
   - Haptics, click sounds, animations, orientation.
   - Export and import all of it as a backup file.

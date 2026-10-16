@@ -18,7 +18,7 @@ val PillarJson = Json {
 @Serializable enum class UiStyle { GLASS, AERO, Y2K, XMB, WII, LUNA, POCKET, GRID }
 @Serializable enum class HomeLayout { CAROUSEL, FEED }
 /** How the carousel home browses games. */
-@Serializable enum class HomeBrowse { COVERS, COVERFLOW, LIST, CHANNELS, SHELF }
+@Serializable enum class HomeBrowse { COVERS, COVERFLOW, LIST, CHANNELS, SHELF, COLLECTION, GRID }
 
 /** Which artwork fills game tiles. */
 @Serializable enum class CoverStyle { BOXART, GRID, SQUARE }
@@ -59,11 +59,12 @@ data class WidgetConfig(val type: WidgetType, val enabled: Boolean = true)
 
 /** Widgets that no longer exist; dropped from saved layouts. */
 // 1.0: Pillar isn't a launcher (no clock/greeting), and achievements live in their own tab.
-val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT, WidgetType.HEADER, WidgetType.RA_PROFILE, WidgetType.RA_PLAYED, WidgetType.ROMM_LATEST)
+val RemovedWidgets = setOf(WidgetType.QUICK_APPS, WidgetType.RA_RECENT, WidgetType.HEADER, WidgetType.RA_PROFILE, WidgetType.RA_PLAYED, WidgetType.ROMM_LATEST,
+    // 1.1: consoles have their own tab.
+    WidgetType.PLATFORMS)
 
 val DefaultWidgets = listOf(
     WidgetConfig(WidgetType.CONTINUE),
-    WidgetConfig(WidgetType.PLATFORMS),
     WidgetConfig(WidgetType.FAVORITES),
     WidgetConfig(WidgetType.RECENTLY_ADDED),
     WidgetConfig(WidgetType.RANDOM),

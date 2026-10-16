@@ -55,6 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import io.github.audxius.pillar.ui.components.rememberCoverSources
+import io.github.audxius.pillar.ui.components.CoverPlaceholder
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.drawscope.translate
 import io.github.audxius.pillar.ui.components.rememberSnapSources
@@ -67,6 +70,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.zIndex
@@ -146,7 +150,8 @@ fun HomeCarouselScreen() {
     }
     // Channels selects by tapping; every other style selects whatever is in the middle.
     var chosen by rememberSaveable { mutableStateOf(0) }
-    val selectedIndex = if (browse == io.github.audxius.pillar.data.HomeBrowse.CHANNELS) chosen.coerceIn(0, ordered.lastIndex) else listIndex
+    val tapSelects = browse == io.github.audxius.pillar.data.HomeBrowse.CHANNELS || browse == io.github.audxius.pillar.data.HomeBrowse.GRID
+    val selectedIndex = if (tapSelects) chosen.coerceIn(0, ordered.lastIndex) else listIndex
     val centered = ordered.getOrNull(selectedIndex.coerceIn(0, ordered.lastIndex)) ?: ordered.first()
     // A tick for every game that passes the middle.
     val sfx = io.github.audxius.pillar.ui.theme.rememberSfx()
@@ -206,12 +211,16 @@ fun HomeCarouselScreen() {
                 io.github.audxius.pillar.data.HomeBrowse.LIST -> GameWheel(ordered, listState, selectedIndex, Modifier.weight(1f), onLongPress = { quick = it })
                 io.github.audxius.pillar.data.HomeBrowse.CHANNELS -> ChannelGrid(ordered, chosen, { chosen = it }, Modifier.weight(1f), onLongPress = { quick = it })
                 io.github.audxius.pillar.data.HomeBrowse.SHELF -> Shelf(ordered, listState, selectedIndex, selected, Modifier.weight(1f), onLongPress = { quick = it })
+                io.github.audxius.pillar.data.HomeBrowse.GRID -> IconGrid(ordered, chosen, { chosen = it }, Modifier.weight(1f), onLongPress = { quick = it })
+                io.github.audxius.pillar.data.HomeBrowse.COLLECTION -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CollectionFlow(ordered, listState, selectedIndex, maxHeight - 12.dp, onLongPress = { quick = it })
+                }
                 io.github.audxius.pillar.data.HomeBrowse.COVERFLOW -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Carousel(ordered, listState, selectedIndex, (maxHeight - 20.dp) / 1.12f, coverFlow = true, onLongPress = { quick = it })
                 }
                 else -> Carousel(ordered, listState, selectedIndex, itemHeight, coverFlow = false, onLongPress = { quick = it })
             }
-            Text(
+            if (browse != io.github.audxius.pillar.data.HomeBrowse.GRID) Text(
                 "${selectedIndex + 1} / ${ordered.size}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -466,7 +475,7 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
             pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
         }
     }
-    val rowHeight = 104.dp
+    val rowHeight = 124.dp
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val pad = ((maxHeight - rowHeight) / 2).coerceAtLeast(0.dp)
         LazyColumn(
@@ -502,7 +511,9 @@ private fun GameWheel(games: List<Game>, state: LazyListState, selectedIndex: In
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GameCover(g, Modifier.height(rowHeight - 12.dp), ratio = 0.75f, compact = true)
+                    // The cover in its own shape: no frame and no stretched copy behind it.
+                    val shape = (io.github.audxius.pillar.ui.components.rememberAspect(g) ?: LocalGraph.current.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.6f)
+                    GameCover(g, Modifier.height(rowHeight - 14.dp), ratio = shape, compact = true)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(gameTitle(g), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -552,8 +563,11 @@ private fun Shelf(games: List<Game>, state: LazyListState, selectedIndex: Int, s
             )
         }
         // The shelf.
+        // Spines at their natural size: as tall as the real box (relative to a DVD case) and as wide
+        // as the spine scan says, never cropped.
         val spineW = 30.dp
-        val spineH = 150.dp
+        val spineH = 170.dp
+        val spineAspects = remember { androidx.compose.runtime.mutableStateMapOf<String, Float>() }
         BoxWithConstraints(Modifier.fillMaxWidth().height(spineH + 22.dp).graphicsLayer()) {
             val side = ((maxWidth - spineW) / 2).coerceAtLeast(0.dp)
             // The plank the cases stand on.
@@ -572,8 +586,11 @@ private fun Shelf(games: List<Game>, state: LazyListState, selectedIndex: Int, s
                 itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
                     val focused = index == selectedIndex
                     val raise by androidx.compose.animation.core.animateDpAsState(if (focused) 14.dp else 0.dp, label = "raise")
+                    val (rel, depthRatio) = physicalBox(g.system)
+                    val h = spineH * rel
+                    val w = (spineAspects[g.id]?.let { h * it } ?: (h * depthRatio)).coerceIn(10.dp, 60.dp)
                     Box(
-                        Modifier.width(spineW).height(spineH).offset(y = -raise)
+                        Modifier.width(w).height(h).offset(y = -raise)
                             .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)) else Modifier)
                             .tappable(RoundedCornerShape(3.dp), onLongClick = { onLongPress(g) }) {
                                 when {
@@ -582,7 +599,7 @@ private fun Shelf(games: List<Game>, state: LazyListState, selectedIndex: Int, s
                                     else -> { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
                                 }
                             },
-                    ) { CaseSpine(g, boxArt[g.id]?.spine ?: graph.shelfArt(g).spine) }
+                    ) { CaseSpine(g, boxArt[g.id]?.spine ?: graph.shelfArt(g).spine, fit = true) { a -> if (a in 0.02f..0.6f) spineAspects[g.id] = a } }
                 }
             }
         }
@@ -634,7 +651,7 @@ private fun Showcase(g: Game, art: io.github.audxius.pillar.data.BoxArt, extra: 
 
 /** A case's spine: the real spine scan when there is one, else the console's color with the title. */
 @Composable
-private fun CaseSpine(g: Game, spineArt: String? = null) {
+private fun CaseSpine(g: Game, spineArt: String? = null, fit: Boolean = false, onAspect: ((Float) -> Unit)? = null) {
     val color = systemColor(g.system)
     Box(
         Modifier.fillMaxSize().clip(RoundedCornerShape(2.dp))
@@ -642,7 +659,11 @@ private fun CaseSpine(g: Game, spineArt: String? = null) {
             .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(2.dp)),
     ) {
         if (spineArt != null) {
-            MultiImage(listOf(spineArt), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 400) { GeneratedSpine(g) }
+            MultiImage(
+                listOf(spineArt), Modifier.fillMaxSize(),
+                contentScale = if (fit) androidx.compose.ui.layout.ContentScale.FillBounds else androidx.compose.ui.layout.ContentScale.Crop,
+                decodeSize = 400, onAspect = onAspect,
+            ) { GeneratedSpine(g) }
         } else {
             GeneratedSpine(g)
         }
@@ -670,65 +691,272 @@ private fun Modifier.sidewaysText() = layout { m, c ->
     }
 }
 
-/** Channels: pages of wide banners, like the Homebrew Channel. Tap once to select, again to open. */
+/**
+ * Channels, like the Wii Menu: pages of rounded "TV screen" tiles in grey bezels, each showing the
+ * game's gameplay. Tap once to select (its name shows), again to open; swipe for the next page.
+ */
 @Composable
 private fun ChannelGrid(games: List<Game>, chosen: Int, onChoose: (Int) -> Unit, modifier: Modifier, onLongPress: (Game) -> Unit) {
     val nav = LocalNav.current
-    val corner = LocalCorner.current
+    val dark = io.github.audxius.pillar.ui.theme.LocalIsDark.current
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val cols = 2
-        val tileW = (maxWidth - 16.dp * 2 - 10.dp) / cols
-        val tileH = tileW * 9f / 16f
-        val rows = ((maxHeight - 24.dp) / (tileH + 10.dp)).toInt().coerceAtLeast(1)
+        val gap = 12.dp
+        val tileW = (maxWidth - 20.dp * 2 - gap) / cols
+        val tileH = tileW * 3f / 4f
+        val rows = ((maxHeight - 40.dp) / (tileH + gap)).toInt().coerceAtLeast(1)
         val perPage = rows * cols
         val pages = (games.size + perPage - 1) / perPage
         val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = chosen / perPage) { pages }
-        // Flipping pages selects the first game on the new page.
         LaunchedEffect(pager.currentPage) { if (chosen / perPage != pager.currentPage) onChoose(pager.currentPage * perPage) }
+        val bezel = if (dark) Color(0xFF3A4148) else Color(0xFFD9DEE3)
+        val empty = if (dark) Color(0xFF262B30) else Color(0xFFEDF0F2)
         Column(Modifier.fillMaxSize()) {
             androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth()) { page ->
-                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    for (r in 0 until rows) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(gap, Alignment.CenterVertically)) {
+                    for (r in 0 until rows) Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                         for (c in 0 until cols) {
                             val i = page * perPage + r * cols + c
                             val g = games.getOrNull(i)
-                            if (g == null) Spacer(Modifier.width(tileW)) else {
+                            val shape = RoundedCornerShape(tileH * 0.16f)
+                            if (g == null) {
+                                // An empty channel, like the Wii's unused slots.
+                                Box(Modifier.width(tileW).height(tileH).clip(shape).background(empty).border(3.dp, bezel, shape))
+                            } else {
                                 val sel = i == chosen
-                                val scale by animateFloatAsState(if (sel) 1.05f else 1f, label = "ch")
-                                val shape = RoundedCornerShape(corner * 0.6f)
+                                val scale by animateFloatAsState(if (sel) 1.06f else 1f, label = "ch")
                                 Box(
-                                    Modifier.width(tileW).height(tileH).graphicsLayer { scaleX = scale; scaleY = scale }
-                                        .shadow(if (sel) 10.dp else 2.dp, shape)
+                                    Modifier.width(tileW).height(tileH).zIndex(if (sel) 1f else 0f).graphicsLayer { scaleX = scale; scaleY = scale }
+                                        .shadow(if (sel) 12.dp else 3.dp, shape)
                                         .clip(shape)
-                                        .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.3f), shape)
-                                        .tappable(shape, onLongClick = { onLongPress(g) }) { if (sel) nav.navigate(Routes.game(g.id, "home")) else onChoose(i) },
+                                        .background(bezel)
+                                        .border(if (sel) 4.dp else 3.dp, if (sel) MaterialTheme.colorScheme.primary else bezel, shape)
+                                        .tappable(shape, onLongClick = { onLongPress(g) }) { if (sel) nav.navigate(Routes.game(g.id, "home")) else onChoose(i) }
+                                        .padding(5.dp),
                                 ) {
-                                    MultiImage(rememberSnapSources(g), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 500) {
-                                        // No screenshot: the console's color and its name, the same for every such game.
-                                        Box(
-                                            Modifier.matchParentSize().background(Brush.linearGradient(listOf(lerp(systemColor(g.system), Color.White, 0.1f), lerp(systemColor(g.system), Color.Black, 0.5f)))),
-                                            contentAlignment = Alignment.Center,
-                                        ) { Text(systemName(g.system).uppercase(), color = Color.White.copy(alpha = 0.35f), style = MaterialTheme.typography.titleLarge) }
+                                    val inner = RoundedCornerShape(tileH * 0.12f)
+                                    Box(Modifier.fillMaxSize().clip(inner)) {
+                                        MultiImage(rememberSnapSources(g), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 500) {
+                                            Box(
+                                                Modifier.matchParentSize().background(Brush.linearGradient(listOf(lerp(systemColor(g.system), Color.White, 0.15f), lerp(systemColor(g.system), Color.Black, 0.35f)))),
+                                                contentAlignment = Alignment.Center,
+                                            ) { Text(gameTitle(g), color = Color.White, style = MaterialTheme.typography.labelLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(8.dp)) }
+                                        }
+                                        // The glass of the "screen".
+                                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.22f), 0.45f to Color.Transparent)))
                                     }
-                                    Box(
-                                        Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    ) { Text(gameTitle(g), color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    if (sel) Text(
+                                        gameTitle(g), color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.align(Alignment.BottomCenter).padding(6.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 10.dp, vertical = 3.dp),
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
-            // Page dots.
-            Row(Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (pIdx in 0 until minOf(pages, 12)) {
                     Box(Modifier.size(if (pIdx == pager.currentPage) 8.dp else 6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onBackground.copy(alpha = if (pIdx == pager.currentPage) 0.9f else 0.3f)))
                 }
             }
         }
     }
+}
+
+
+/** Real-world box height, relative to a DVD case, and the box's depth relative to its own height. */
+private fun physicalBox(system: String): Pair<Float, Float> = when (system) {
+    "ps2", "gc", "wii", "wiiu", "xbox", "ps3", "dreamcast", "saturn", "saturnjp", "segacd", "megacd" -> 1f to 0.075f
+    "psx", "pcenginecd", "tg-cd", "neogeocd", "3do" -> 0.66f to 0.08f
+    "psp" -> 0.9f to 0.08f
+    "switch" -> 0.89f to 0.06f
+    "nds", "n3ds" -> 0.68f to 0.1f
+    "gba", "gb", "gbc", "gamegear", "ngp", "ngpc", "wonderswan", "wonderswancolor", "atarilynx" -> 0.68f to 0.15f
+    "nes", "famicom", "fds", "mastersystem", "atari2600", "atari7800" -> 0.95f to 0.14f
+    "snes", "snesna", "sfc", "n64", "virtualboy" -> 0.95f to 0.2f
+    "genesis", "megadrive", "megadrivejp", "sega32x" -> 1f to 0.1f
+    else -> 0.95f to 0.1f
+}
+
+/**
+ * Collection: your actual boxes, each in its real shape and size, turning in 3D as they pass. The
+ * side that faces you is drawn as a real panel hinged to the cover: its spine on one side (the real
+ * spine scan when the box art database has one), the case edge on the other.
+ */
+@Composable
+private fun CollectionFlow(games: List<Game>, state: LazyListState, selectedIndex: Int, itemHeight: Dp, onLongPress: (Game) -> Unit) {
+    val graph = LocalGraph.current
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    val boxArt by graph.boxArt.art.collectAsStateWithLifecycle()
+    var tapJob by remember { mutableStateOf<Job?>(null) }
+    var pressedWhileMoving by remember { mutableStateOf(false) }
+    val catchMoving = Modifier.pointerInput(state) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            pressedWhileMoving = state.isScrollInProgress && tapJob?.isActive != true
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth().height(itemHeight).graphicsLayer()) {
+        // One scale for every box (a DVD case's height), small enough that even the widest boxes
+        // (SNES, N64) fit, so real size differences between consoles survive.
+        val maxH = minOf(itemHeight * 0.8f, maxWidth * 0.75f)
+        val side = (maxWidth / 2 - maxH * 0.35f).coerceAtLeast(0.dp)
+        LazyRow(
+            state = state,
+            flingBehavior = rememberSnapFlingBehavior(state),
+            contentPadding = PaddingValues(horizontal = side),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxHeight().then(catchMoving),
+        ) {
+            itemsIndexed(games, key = { _, g -> g.id }) { index, g ->
+                val (rel, depthRatio) = physicalBox(g.system)
+                val aspect = (io.github.audxius.pillar.ui.components.rememberAspect(g) ?: graph.catalog.boxRatio(g.system)).coerceIn(0.5f, 1.6f)
+                val fit = minOf(1f, (maxWidth * 0.58f) / (maxH * rel * aspect))
+                val h = maxH * rel * fit
+                val w = h * aspect
+                val depth = h * depthRatio
+                val color = systemColor(g.system)
+                // Angle and side from the item's distance to the middle, in item widths.
+                fun DrawCtx(): Float {
+                    val info = state.layoutInfo
+                    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return 0f
+                    val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                    return ((item.offset + item.size / 2f - center) / item.size).coerceIn(-2f, 2f)
+                }
+                Box(
+                    Modifier.width(w).height(h)
+                        .zIndex(-abs(index - selectedIndex).toFloat())
+                        // Boxes away from the middle step back, so their neighbours show.
+                        .graphicsLayer {
+                            val sc = 1f - minOf(abs(DrawCtx()), 1f) * 0.22f
+                            scaleX = sc; scaleY = sc
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                        }
+                        // A tap handler that doesn't clip, so the side panels can show outside the box.
+                        .pointerInput(g.id) {
+                            detectTapGestures(
+                                onLongPress = { onLongPress(g) },
+                                onTap = {
+                                    when {
+                                        pressedWhileMoving -> pressedWhileMoving = false
+                                        index == selectedIndex && !state.isScrollInProgress -> nav.navigate(Routes.game(g.id, "home"))
+                                        else -> { tapJob?.cancel(); tapJob = scope.launch { state.centerOn(index) } }
+                                    }
+                                },
+                            )
+                        },
+                ) {
+                    // Spine: hinged to the cover's left edge, visible on boxes right of the middle.
+                    Box(
+                        Modifier.offset(x = -depth).width(depth).fillMaxHeight().graphicsLayer {
+                            val d = DrawCtx()
+                            val a = (d * 50f).coerceIn(-60f, 60f)
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
+                            rotationY = a - 90f
+                            cameraDistance = 12f * density
+                            alpha = if (d > 0.02f) 1f else 0f
+                        },
+                    ) { CaseSpine(g, boxArt[g.id]?.spine ?: graph.shelfArt(g).spine, fit = true) }
+                    // Other edge: plain case plastic, visible on boxes left of the middle.
+                    Box(
+                        Modifier.offset(x = w).width(depth).fillMaxHeight().graphicsLayer {
+                            val d = DrawCtx()
+                            val a = (d * 50f).coerceIn(-60f, 60f)
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+                            rotationY = a + 90f
+                            cameraDistance = 12f * density
+                            alpha = if (d < -0.02f) 1f else 0f
+                        }.background(Brush.horizontalGradient(listOf(lerp(color, Color.Black, 0.55f), lerp(color, Color.Black, 0.8f)))),
+                    )
+                    // The cover, hinged on whichever edge meets the visible side.
+                    Box(
+                        Modifier.fillMaxSize().graphicsLayer {
+                            val d = DrawCtx()
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(if (d >= 0f) 0f else 1f, 0.5f)
+                            rotationY = (d * 50f).coerceIn(-60f, 60f)
+                            cameraDistance = 12f * density
+                        }.clip(RoundedCornerShape(2.dp)),
+                    ) {
+                        MultiImage(rememberCoverSources(g), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.FillBounds, decodeSize = 700) {
+                            CoverPlaceholder(gameTitle(g), g.system, compact = true)
+                        }
+                        // Light catching the case.
+                        Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.16f), Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.12f)))))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Grid, like iiSU: a panel of rounded square icons with a wide "Jump back in" tile first. Tap to
+ * select (its name shows above), tap again to open.
+ */
+@Composable
+private fun IconGrid(games: List<Game>, chosen: Int, onChoose: (Int) -> Unit, modifier: Modifier, onLongPress: (Game) -> Unit) {
+    val nav = LocalNav.current
+    val user = LocalUserData.current
+    val corner = LocalCorner.current
+    val last = remember(games, user.lastPlayed) { games.firstOrNull { (user.lastPlayed[it.id] ?: 0) > 0 } }
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    Column(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        // The selected game's name, in a pill.
+        val sel = games.getOrNull(chosen)
+        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+            if (sel != null) Text(
+                gameTitle(sel), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.styledSurface(RoundedCornerShape(50)).padding(horizontal = 16.dp, vertical = 7.dp),
+            )
+        }
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            androidx.compose.foundation.lazy.grid.GridCells.Fixed(4),
+            state = gridState,
+            modifier = Modifier.weight(1f).fillMaxWidth().styledSurface(RoundedCornerShape(corner)).padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (last != null) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }, key = "jump") {
+                val shape = RoundedCornerShape(corner * 0.6f)
+                Box(
+                    Modifier.aspectRatio(2.08f).clip(shape).tappable(shape) { nav.navigate(Routes.game(last.id, "home")) },
+                ) {
+                    MultiImage(rememberHeroSources(last), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 600) {}
+                    Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
+                    GameCover(last, Modifier.align(Alignment.CenterStart).padding(8.dp).fillMaxHeight(0.8f), compact = true)
+                    Text(
+                        "Jump back in", color = Color.White, style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            itemsIndexedGrid(games) { i, g ->
+                val selected = i == chosen
+                val shape = RoundedCornerShape(corner * 0.6f)
+                val scale by animateFloatAsState(if (selected) 1.06f else 1f, label = "icon")
+                Box(
+                    Modifier.aspectRatio(1f).graphicsLayer { scaleX = scale; scaleY = scale }
+                        .shadow(if (selected) 8.dp else 0.dp, shape).clip(shape)
+                        .border(if (selected) 3.dp else 0.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
+                        .tappable(shape, onLongClick = { onLongPress(g) }) { if (selected) nav.navigate(Routes.game(g.id, "home")) else onChoose(i) },
+                ) {
+                    val art = io.github.audxius.pillar.ui.components.rememberArt(g)
+                    val cover = rememberCoverSources(g)
+                    val sources = remember(art, cover) { listOfNotNull(art?.sgdbSquare) + cover }
+                    MultiImage(sources, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop, decodeSize = 300) {
+                        CoverPlaceholder(gameTitle(g), g.system, compact = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.grid.LazyGridScope.itemsIndexedGrid(games: List<Game>, content: @Composable (Int, Game) -> Unit) {
+    items(games.size, key = { games[it].id }) { i -> content(i, games[i]) }
 }
 
 /** The "pick your ROM folder" card, shared with the feed layout. */

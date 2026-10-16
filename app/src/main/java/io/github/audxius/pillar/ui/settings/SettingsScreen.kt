@@ -387,17 +387,19 @@ private fun HomePage() {
             s.homeLayout,
             description = "Carousel: full-screen art with a cover carousel. Feed: scrolling widgets you arrange below.",
         ) { l -> update { it.copy(homeLayout = l) } }
-        SettingChoice(
+        if (s.homeLayout == HomeLayout.CAROUSEL) SettingChoice(
             "Browse games",
             listOf(
                 io.github.audxius.pillar.data.HomeBrowse.COVERS to "Covers",
                 io.github.audxius.pillar.data.HomeBrowse.COVERFLOW to "Cover flow",
+                io.github.audxius.pillar.data.HomeBrowse.COLLECTION to "Collection",
+                io.github.audxius.pillar.data.HomeBrowse.GRID to "Grid",
                 io.github.audxius.pillar.data.HomeBrowse.SHELF to "Shelf",
                 io.github.audxius.pillar.data.HomeBrowse.CHANNELS to "Channels",
                 io.github.audxius.pillar.data.HomeBrowse.LIST to "List",
             ),
             s.homeBrowse,
-            description = "Covers: a sideways carousel. Cover flow: covers turning in 3D. Shelf: game cases with their discs. Channels: pages of banners, like the Homebrew Channel. List: titles scrolling up and down.",
+            description = "Covers: a sideways carousel. Cover flow: covers turning in 3D. Collection: your real boxes, in their own shapes, in 3D. Grid: icons in a grid. Shelf: spines on a shelf. Channels: Wii-style channel pages. List: titles scrolling up and down.",
         ) { v -> update { it.copy(homeBrowse = v) } }
     }
     SettingsGroup("Widgets") {

@@ -121,34 +121,19 @@ private fun HomeFeed() {
         item { Spacer(Modifier.statusBarsPadding()) }
         if (games.isEmpty()) item("empty") { GapIfNotEmpty(12.dp) { EmptyLibraryCard() } }
         for ((index, type) in enabled.withIndex()) {
-            // The whole library goes in as rows of the list itself, so even big libraries stay smooth.
-            if (type == WidgetType.ALL_GAMES) {
-                item("all-head") {
-                    GapIfNotEmpty(if (index == 0) 0.dp else 22.dp) {
-                        SectionHeader("All games · ${gamesLabel(games.size)}")
-                    }
-                }
-                items(byRecent.chunked(3), key = { row -> "all-" + row.first().id }) { row ->
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { g -> GameTile(g, Modifier.weight(1f), sharedKey = "cover-all-${g.id}", onLongClick = { quick = g }) { nav.navigate(Routes.game(g.id, "all")) } }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-                continue
-            }
             item(type.name) {
                 GapIfNotEmpty(if (index == 0) 0.dp else 22.dp) {
                 when (type) {
                     WidgetType.HEADER -> Unit
                     WidgetType.CONTINUE -> ContinueWidget(recent.ifEmpty { games.shuffledStable().take(6) }, isRecent = recent.isNotEmpty())
-                    WidgetType.PLATFORMS -> PlatformsWidget(games)
+                    WidgetType.PLATFORMS -> Unit
                     WidgetType.FAVORITES -> GameRowWidget("Favorites", games.filter { it.id in user.favorites }, "fav") { quick = it }
                     WidgetType.RECENTLY_ADDED -> GameRowWidget("Recently added", games.sortedByDescending { it.modified }.take(16), "new") { quick = it }
                     WidgetType.RA_PROFILE -> Unit
                     WidgetType.RA_RECENT -> Unit
                     WidgetType.RA_PLAYED -> Unit
                     WidgetType.ROMM_LATEST -> Unit
-                    WidgetType.ALL_GAMES -> Unit
+                    WidgetType.ALL_GAMES -> GameRowWidget("All games", byRecent, "all") { quick = it }
                     WidgetType.RANDOM -> RandomWidget(games)
                     WidgetType.QUICK_APPS -> Unit
                     WidgetType.STATS -> StatsWidget(games)
@@ -282,23 +267,6 @@ private fun ContinueWidget(games: List<Game>, isRecent: Boolean) {
 }
 
 // ---- Platforms -----------------------------------------------------------------------------
-
-@Composable
-private fun PlatformsWidget(games: List<Game>) {
-    val nav = LocalNav.current
-    val ordered = rememberOrderedSystems(games)
-    if (ordered.isEmpty()) return
-    Column {
-        SectionHeader("Platforms", action = "See all") { nav.navigate(Routes.LIBRARY) }
-        Spacer(Modifier.height(8.dp))
-        // The same console cards as the Library tab.
-        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(ordered, key = { it.first }) { (system, list) ->
-                PlatformCard(system, list, Modifier.width(150.dp)) { nav.navigate(Routes.platform(system)) }
-            }
-        }
-    }
-}
 
 @Composable
 fun rememberOrderedSystems(games: List<Game>): List<Pair<String, List<Game>>> {
