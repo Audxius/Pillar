@@ -497,14 +497,17 @@ private fun AchievementsSection(game: Game) {
 private fun GameSaves(game: Game, rommId: Int?) {
     val graph = LocalGraph.current
     val settings = LocalSettings.current
-    val nav = LocalNav.current
     val last by graph.saveSync.last.collectAsStateWithLifecycle()
+    val serverFiles by graph.saveSync.serverFiles.collectAsStateWithLifecycle()
+    var all by remember { mutableStateOf<List<io.github.audxius.pillar.data.LocalSaveFile>>(emptyList()) }
     var files by remember { mutableStateOf<List<io.github.audxius.pillar.data.LocalSaveFile>>(emptyList()) }
+    var deleting by remember { mutableStateOf<io.github.audxius.pillar.data.LocalSaveFile?>(null) }
     var states by remember { mutableStateOf<Map<String, io.github.audxius.pillar.data.SyncFileState>>(emptyMap()) }
     var refresh by remember { mutableStateOf(0) }
     val remote = rememberRommSaves(if (settings.rommConfigured) rommId else null, refresh).orEmpty()
     var open by remember { mutableStateOf(false) }
-    LaunchedEffect(game.id, last) {
+    LaunchedEffect(game.id, refresh) { graph.saveSync.refreshServer() }
+    LaunchedEffect(game.id, last, refresh) {
         if (settings.savesDir == null && settings.statesDir == null && settings.systemDir == null) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val stem = game.baseName.lowercase()
@@ -513,14 +516,19 @@ private fun GameSaves(game: Game, rommId: Int?) {
                 val n = it.name.lowercase().removeSuffix(".png")
                 SharedSaves.stems(n).any { s -> s == stem } || sharedSaveSystem(it) == game.system
             }
+            all = mine
             files = mine.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }
             states = graph.saveSync.fileStates(mine)
         }
     }
-    if (files.isEmpty() && remote.isEmpty()) return
+    // The console's shared memory cards that are only on the sync server.
+    val server = remember(all, serverFiles, game.system) { graph.saveSync.serverOnlySystemSaves(all).filter { SharedSaves.systemOf(it) == game.system } }
+    deleting?.let { f -> DeleteSaveDialog(f, onDismiss = { deleting = null }, onDeleted = { refresh++ }) }
+    if (files.isEmpty() && remote.isEmpty() && server.isEmpty()) return
     val synced = files.isNotEmpty() && files.all { states[it.key] == io.github.audxius.pillar.data.SyncFileState.SYNCED }
     val summary = listOfNotNull(
         files.size.takeIf { it > 0 }?.let { "$it on this device" + if (synced) " · synced" else "" },
+        server.size.takeIf { it > 0 }?.let { "$it on the server" },
         remote.size.takeIf { it > 0 }?.let { n -> "$n on RomM" + remote.map { it.slot }.distinct().size.let { s -> if (s > 1) " in $s slots" else "" } },
     ).joinToString(" · ")
     val chevron by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, label = "savesChevron")
@@ -535,10 +543,8 @@ private fun GameSaves(game: Game, rommId: Int?) {
         }
         androidx.compose.animation.AnimatedVisibility(open) {
             Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-                if (files.isNotEmpty()) {
-                    files.forEach { f -> SaveFileRow(f, states[f.key], onDelete = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) }
-                    TextButton(onClick = { nav.navigate(io.github.audxius.pillar.ui.Routes.SAVES) }) { Text("Manage saves") }
-                }
+                files.forEach { f -> SaveFileRow(f, states[f.key], onDelete = { deleting = it }) }
+                server.forEach { k -> ServerSaveRow(k) { refresh++ } }
                 if (remote.isNotEmpty()) RommSaveList(game, remote) { refresh++ }
             }
         }

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Warning
@@ -178,7 +179,9 @@ fun SavesScreen() {
     var refresh by remember { mutableStateOf(0) }
     var deleting by remember { mutableStateOf<LocalSaveFile?>(null) }
     var showBackups by remember { mutableStateOf(false) }
-    val hasFolders = settings.savesDir != null || settings.statesDir != null || settings.systemDir != null
+    // Without local folders the list can still show what's on the sync server.
+    val hasFolders = settings.savesDir != null || settings.statesDir != null || settings.systemDir != null || settings.webdavUrl.isNotBlank()
+    val serverFiles by graph.saveSync.serverFiles.collectAsStateWithLifecycle()
 
     LaunchedEffect(refresh, last, settings.savesDir, settings.statesDir, settings.systemDir) {
         if (!hasFolders) return@LaunchedEffect
@@ -188,16 +191,25 @@ fun SavesScreen() {
             states = graph.saveSync.fileStates(list)
         }
     }
+    LaunchedEffect(refresh, settings.webdavUrl) { graph.saveSync.refreshServer() }
 
     val finder = remember(games) { SaveGameFinder(games) }
-    val grouped = remember(files, finder) {
-        files.orEmpty().groupBy { f -> sharedSaveSystem(f)?.let { "system:$it" } ?: finder.find(f).id }.entries
-            .sortedByDescending { e -> e.value.maxOf { it.modified } }
+    val serverOnly = remember(files, serverFiles) { files?.let { graph.saveSync.serverOnlySystemSaves(it) }.orEmpty() }
+    // A fixed order (consoles' shared storage, then games A-Z) so nothing jumps around when a save is deleted.
+    val customTitle = io.github.audxius.pillar.ui.theme.LocalUserData.current.customTitle
+    val grouped = remember(files, serverOnly, finder, customTitle) {
+        val systems = (files.orEmpty().mapNotNull { sharedSaveSystem(it) } + serverOnly.mapNotNull { SharedSaves.systemOf(it) }).distinct()
+            .sortedBy { graph.catalog.displayName(it).lowercase() }
+            .map { sys -> SaveGroupEntry("system:$sys", system = sys, files = files.orEmpty().filter { sharedSaveSystem(it) == sys }, server = serverOnly.filter { SharedSaves.systemOf(it) == sys }) }
+        val byGame = files.orEmpty().filter { sharedSaveSystem(it) == null }.groupBy { finder.find(it) }
+            .map { (game, list) -> SaveGroupEntry(game.id, game = game, files = list) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { customTitle[it.id] ?: it.game!!.title })
+        systems + byGame
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = BottomBarSpace), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            ScreenHeader("Saves", if (hasFolders) "${files?.size ?: 0} files" else null) {
+            ScreenHeader("Saves", if (hasFolders) "${(files?.size ?: 0) + serverOnly.size} files" else null) {
                 if (hasFolders) RoundIcon(Icons.Rounded.History, "Backups") { showBackups = true }
             }
         }
@@ -295,36 +307,130 @@ fun SavesScreen() {
             item { Text("No save files in the selected folders yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 22.dp)) }
         } else {
             item { SectionHeader("By game") }
-            items(grouped, key = { it.key }) { (stem, list) ->
-                val shared = sharedSaveSystem(list.first())
-                if (shared != null) SystemSaveGroup(shared, list, states, onDelete = { deleting = it })
-                else SaveGroup(finder.find(list.first()), list, states, onDelete = { deleting = it })
+            items(grouped, key = { it.id }) { g ->
+                if (g.system != null) SystemSaveGroup(g.system, g.files, g.server, states, onDelete = { deleting = it }, onChanged = { refresh++ })
+                else SaveGroup(g.game!!, g.files, states, onDelete = { deleting = it })
             }
         }
     }
 
-    deleting?.let { f ->
+    deleting?.let { f -> DeleteSaveDialog(f, onDismiss = { deleting = null }, onDeleted = { refresh++ }) }
+    if (showBackups) BackupsDialog(onDismiss = { showBackups = false; refresh++ })
+}
+
+private class SaveGroupEntry(val id: String, val game: Game? = null, val system: String? = null, val files: List<LocalSaveFile>, val server: List<String> = emptyList())
+
+/** Asks before deleting a save from this device (backed up first; the server copy always stays). */
+@Composable
+fun DeleteSaveDialog(f: LocalSaveFile, onDismiss: () -> Unit, onDeleted: () -> Unit) {
+    val graph = LocalGraph.current
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
+    var busy by remember(f) { mutableStateOf(false) }
+    val sys = sharedSaveSystem(f)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (sys != null) "This is a system file" else "Delete ${f.name}?") },
+        text = {
+            Text(
+                if (sys != null) "${f.name} isn't one game's save: it's ${io.github.audxius.pillar.ui.components.systemDisplayName(sys)} storage shared by all its games, " +
+                    "so deleting it removes every ${io.github.audxius.pillar.ui.components.systemDisplayName(sys)} save in it on this device. A backup is kept in Pillar, and the server copy stays."
+                else "A backup is kept in Pillar. Sync never deletes anything from your server, so the server copy stays."
+            )
+        },
+        confirmButton = {
+            // Closes only once deleted: closing first would cancel the delete along with the dialog.
+            TextButton(enabled = !busy, onClick = {
+                busy = true
+                scope.launch {
+                    runCatching { graph.saveSync.deleteLocal(f) }.onFailure { snackbar.showSnackbar(it.message ?: "Couldn't delete it") }
+                    onDeleted(); onDismiss()
+                }
+            }) { Text("Delete") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * A shared system save that's only on the sync server (e.g. a Dreamcast VMU RetroArch uploaded):
+ * save a copy of it, or replace it with another file. The server's copy is backed up first.
+ */
+@Composable
+fun ServerSaveRow(key: String, onChanged: () -> Unit) {
+    val graph = LocalGraph.current
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+    val name = key.substringAfterLast('/')
+    var info by remember(key) { mutableStateOf(0L to -1L) }
+    var menu by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(key) { info = graph.saveSync.serverInfo(key) }
+    val export = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) scope.launch {
+            busy = true
+            runCatching { graph.saveSync.exportServer(key, uri) }
+                .onSuccess { snackbar.showSnackbar("Saved a copy of $name") }
+                .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't save a copy") }
+            busy = false
+        }
+    }
+    var replacing by remember { mutableStateOf<android.net.Uri?>(null) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> replacing = uri }
+    val color = MaterialTheme.colorScheme.tertiary
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Rounded.Cloud, null,
+            Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(color.copy(alpha = 0.14f)).padding(7.dp),
+            tint = color,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Shared memory card · $name", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(
+                    key.split('/').drop(1).dropLast(1).joinToString("/").ifBlank { null },
+                    info.second.takeIf { it >= 0 }?.let { formatBytes(it) },
+                    info.first.takeIf { it > 0 }?.let { timeAgo(it) },
+                    "On the server",
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Box {
+            if (busy) CircularProgressIndicator(Modifier.size(36.dp).padding(8.dp), strokeWidth = 2.dp)
+            else Icon(
+                Icons.Rounded.MoreVert, "More",
+                Modifier.size(36.dp).clip(CircleShape).tappable(CircleShape) { menu = true }.padding(8.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            androidx.compose.material3.DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                androidx.compose.material3.DropdownMenuItem(text = { Text("Save a copy…") }, onClick = { menu = false; export.launch(name) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text("Replace with a file…") }, onClick = { menu = false; pick.launch(arrayOf("*/*")) })
+            }
+        }
+    }
+    replacing?.let { uri ->
         AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text(if (sharedSaveSystem(f) != null) "This is a system file" else "Delete ${f.name}?") },
-            text = {
-                val sys = sharedSaveSystem(f)
-                Text(
-                    if (sys != null) "${f.name} isn't one game's save: it's ${io.github.audxius.pillar.ui.components.systemDisplayName(sys)} storage shared by all its games, " +
-                        "so deleting it removes every ${io.github.audxius.pillar.ui.components.systemDisplayName(sys)} save in it on this device. A backup is kept in Pillar, and the server copy stays."
-                    else "A backup is kept in Pillar. Sync never deletes anything from your server, so the server copy stays."
-                )
-            },
+            onDismissRequest = { replacing = null },
+            title = { Text("Replace $name on the server?") },
+            text = { Text("Every game on this console keeps its saves in this file. The server's current copy is backed up in Pillar first, and RetroArch gets the new one on its next sync.") },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { graph.saveSync.deleteLocal(f); refresh++ }
-                    deleting = null
-                }) { Text("Delete") }
+                    replacing = null
+                    scope.launch {
+                        busy = true
+                        runCatching { graph.saveSync.replaceOnServer(key, uri) }
+                            .onSuccess { snackbar.showSnackbar("Replaced $name on the server"); info = graph.saveSync.serverInfo(key); onChanged() }
+                            .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't replace it") }
+                        busy = false
+                    }
+                }) { Text("Replace") }
             },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { replacing = null }) { Text("Cancel") } },
         )
     }
-    if (showBackups) BackupsDialog(onDismiss = { showBackups = false; refresh++ })
 }
 
 /** Changed on both sides: shows how old each copy is and lets you keep one. */
@@ -334,7 +440,7 @@ private fun ConflictCard(c: SyncConflict, onKeep: (device: Boolean) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Warning, null, tint = Warn, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(saveLabel(c.key.substringAfterLast('/')).first, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            Text(if (SharedSaves.systemOf(c.key) != null) "Shared memory card" else saveLabel(c.key.substringAfterLast('/')).first, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
         }
         Text(
             saveStem(c.key.substringAfterLast('/')),
@@ -424,8 +530,9 @@ private fun CopyChoice(
 
 /** A console's shared memory cards / system storage, which hold the saves of all its games. */
 @Composable
-private fun SystemSaveGroup(system: String, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
+private fun SystemSaveGroup(system: String, files: List<LocalSaveFile>, server: List<String>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit, onChanged: () -> Unit) {
     var open by rememberSaveable("sys-$system") { mutableStateOf(false) }
+    val chevron by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
     val synced = files.all { states[it.key] == SyncFileState.SYNCED }
     Glass(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().tappable { open = !open }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -442,12 +549,24 @@ private fun SystemSaveGroup(system: String, files: List<LocalSaveFile>, states: 
                     val c = if (synced) successColor() else MaterialTheme.colorScheme.primary
                     Box(Modifier.size(7.dp).clip(CircleShape).background(c))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (synced) "Synced" else "Not all synced", style = MaterialTheme.typography.labelMedium, color = c)
+                    Text(
+                        when {
+                            files.isEmpty() -> "On the server"
+                            synced && server.isEmpty() -> "Synced"
+                            synced -> "Synced · ${server.size} more on the server"
+                            else -> "Not all synced"
+                        },
+                        style = MaterialTheme.typography.labelMedium, color = c,
+                    )
                 }
             }
+            Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(chevron), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         androidx.compose.animation.AnimatedVisibility(open) {
-            Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) { files.forEach { f -> SaveFileRow(f, states[f.key], onDelete) } }
+            Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
+                files.forEach { f -> SaveFileRow(f, states[f.key], onDelete) }
+                server.forEach { k -> ServerSaveRow(k, onChanged) }
+            }
         }
     }
 }
@@ -456,7 +575,8 @@ private fun SystemSaveGroup(system: String, files: List<LocalSaveFile>, states: 
 @Composable
 private fun SaveGroup(game: Game, files: List<LocalSaveFile>, states: Map<String, SyncFileState>, onDelete: (LocalSaveFile) -> Unit) {
     val nav = LocalNav.current
-    var open by rememberSaveable(files.first().key) { mutableStateOf(false) }
+    // Keyed by game, so the group stays open while its files are deleted.
+    var open by rememberSaveable("game-${game.id}") { mutableStateOf(false) }
     val chevron by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
     val shown = files.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }
     val fileStates = shown.map { states[it.key] }

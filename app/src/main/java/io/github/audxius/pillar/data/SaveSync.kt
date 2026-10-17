@@ -191,6 +191,12 @@ class SaveSync(
         PillarJson.decodeFromString(SyncState.serializer(), stateFile.readText())
     }.getOrDefault(SyncState()).also { _last.value = it.last }
 
+    private val _server = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** What the server's manifest lists (key -> MD5), as of the last sync or [refreshServer]. */
+    val serverFiles: StateFlow<Map<String, String>> = _server.asStateFlow()
+
+    private fun noteServer(m: Map<String, String>) { _server.value = m.filterValues { it.isNotEmpty() } }
+
     private fun persist() = runCatching { stateFile.writeText(PillarJson.encodeToString(SyncState.serializer(), state)) }
 
     val configured: Boolean
@@ -297,9 +303,78 @@ class SaveSync(
         }
     }
 
+    /** Re-reads the server's manifest, e.g. to show what's on it without running a sync. */
+    suspend fun refreshServer() = withContext(Dispatchers.IO) {
+        if (store.settings.value.webdavUrl.isBlank()) return@withContext
+        runCatching { getManifest().body?.let { SyncPlanner.decodeManifest(it) }.orEmpty() }.onSuccess { noteServer(it) }
+    }
+
+    /**
+     * Shared system saves (memory cards, VMUs...) the server has but this device doesn't, so they
+     * show up even without a local system folder.
+     */
+    fun serverOnlySystemSaves(local: List<LocalSaveFile>): List<String> {
+        val have = local.map { it.key.lowercase() }.toSet()
+        return _server.value.keys.filter { SharedSaves.isSystemSave(it) && it.lowercase() !in have }.sorted()
+    }
+
+    /** Last-Modified and size of a server file, (0, -1) when unknown. */
+    suspend fun serverInfo(key: String): Pair<Long, Long> = withContext(Dispatchers.IO) { remoteInfo(key) }
+
+    /** Copies the server's file to [dest] (a document the user picked). */
+    suspend fun exportServer(key: String, dest: Uri) = withContext(Dispatchers.IO) {
+        val tmp = File(tmpDir, "export.pillartmp")
+        try {
+            download(key, tmp)
+            context.contentResolver.openOutputStream(dest, "wt")?.use { out -> tmp.inputStream().use { it.copyTo(out) } }
+                ?: throw IOException("Can't write the copy")
+        } finally { tmp.delete() }
+    }
+
+    /**
+     * Replaces the server's [key] with [src], keeping a backup of the server's copy first, and
+     * updates manifest.server so RetroArch picks it up. A local copy (if there's a folder for it)
+     * gets the same file so both stay in sync.
+     */
+    suspend fun replaceOnServer(key: String, src: Uri) = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val tmp = File(tmpDir, "replace.pillartmp")
+            try {
+                context.contentResolver.openInputStream(src)?.use { i -> tmp.outputStream().use { i.copyTo(it) } } ?: throw IOException("Can't read that file")
+                val hash = fileMd5(tmp)
+                repeat(2) { attempt ->
+                    val fetched = getManifest()
+                    val server = LinkedHashMap(fetched.body?.let { SyncPlanner.decodeManifest(it) }.orEmpty())
+                    val old = server.entries.firstOrNull { it.key.equals(key, true) }
+                    if (attempt == 0 && !old?.value.isNullOrEmpty()) backupRemote(key)
+                    if (attempt == 0) try { upload(key, tmp) } catch (e: Rejected) { throw IOException("The server refused it: ${e.message}") }
+                    old?.let { server.remove(it.key) }
+                    server[old?.key ?: key] = hash
+                    try {
+                        putManifest(SyncPlanner.encodeManifest(server), fetched.etag, existed = fetched.body != null)
+                        noteServer(server)
+                    } catch (e: ManifestChanged) {
+                        if (attempt == 1) throw e
+                        return@repeat
+                    }
+                    if (rootFor(key) != null) {
+                        writeLocal(key, tmp, listLocal().firstOrNull { it.key.equals(key, true) })
+                        val local = LinkedHashMap(state.local)
+                        local.keys.firstOrNull { it.equals(key, true) }?.let { local.remove(it) }
+                        local[key] = hash
+                        state = state.copy(local = local)
+                        persist()
+                    }
+                    return@withContext
+                }
+            } finally { tmp.delete() }
+        }
+    }
+
     suspend fun testConnection(): String = withContext(Dispatchers.IO) {
         val m = getManifest()
         val entries = m.body?.let { SyncPlanner.decodeManifest(it) }.orEmpty()
+        noteServer(entries)
         when {
             m.body == null -> "Connected. No RetroArch manifest yet; Pillar will create one."
             else -> entries.count { it.value.isNotEmpty() }.let { n -> "Connected. Server tracks $n file${if (n == 1) "" else "s"}." }
@@ -485,6 +560,7 @@ class SaveSync(
         _status.value = SyncStatus.Running("Checking server…")
         val fetched = getManifest()
         val server = LinkedHashMap(fetched.body?.let { SyncPlanner.decodeManifest(it) }.orEmpty())
+        noteServer(server)
         val tops = roots().map { it.first + "/" }
         fun ours(key: String) = tops.any { key.startsWith(it, ignoreCase = true) } &&
             (!key.startsWith("system/", ignoreCase = true) || SharedSaves.isSystemSave(key))
@@ -583,6 +659,7 @@ class SaveSync(
         if (serverChanged) {
             _status.value = SyncStatus.Running("Updating manifest…")
             putManifest(SyncPlanner.encodeManifest(server), fetched.etag, existed = fetched.body != null)
+            noteServer(server)
         }
         // Our record only moves forward once the server manifest is safely written.
         state = state.copy(local = newLocal)

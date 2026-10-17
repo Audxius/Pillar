@@ -82,8 +82,10 @@ Android 8.0 or newer.
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
   deletes anything on the server and backs up any save before replacing it. When a save changed
   on both sides, you see how old each copy is and pick which to keep. Shared memory cards (PS2,
-  Dreamcast, GameCube, Wii, PSP) are shown with every game of that console, including the ones
-  RetroArch keeps in its system folder (Pillar only ever reads save data from there, never BIOS). Your RomM save slots show on
+  Dreamcast, GameCube, Wii, PSP) are shown with every game of that console, read straight from the
+  server's system folder (no local folder needed): save a copy, or replace one on the server (its
+  old copy is backed up first). Pick RetroArch's system folder too to keep a copy on the device in
+  sync (only save data, never BIOS). Saves can be deleted right from a game's page. Your RomM save slots show on
   each game's page: play from any of them, or make one your main save. A small indicator shows while
   saves sync, optionally even over a game you've gone back into.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for

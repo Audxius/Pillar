@@ -1031,8 +1031,9 @@ private fun SavesPage() {
         SettingRow(
             "System files",
             s.systemDir?.let { Saf.describeTree(Uri.parse(it)) }
-                ?: "Optional: RetroArch's system folder, where Dreamcast VMUs, PS2 memory cards and GameCube/Wii/PSP saves live. Only those are read and synced, never BIOS files.",
+                ?: "Optional. Dreamcast VMUs, PS2 memory cards and GameCube/Wii/PSP saves on your WebDAV server show up without it; pick RetroArch's system folder to keep a copy here in sync too. Only those saves are synced, never BIOS files.",
             Icons.Rounded.Folder, onClick = pickSystem,
+            trailing = if (s.systemDir != null) ({ TextButton(onClick = { update { it.copy(systemDir = null) } }) { Text("Remove") } }) else null,
         )
     }
     SettingsGroup("WebDAV server") {
