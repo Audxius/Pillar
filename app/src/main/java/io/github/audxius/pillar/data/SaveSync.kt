@@ -194,7 +194,7 @@ class SaveSync(
     private fun persist() = runCatching { stateFile.writeText(PillarJson.encodeToString(SyncState.serializer(), state)) }
 
     val configured: Boolean
-        get() = store.settings.value.let { it.webdavUrl.isNotBlank() && (it.savesDir != null || it.statesDir != null) }
+        get() = store.settings.value.let { it.webdavUrl.isNotBlank() && (it.savesDir != null || it.statesDir != null || it.systemDir != null) }
 
     /** Runs a sync unless one ran very recently. Called whenever Pillar comes to the foreground. */
     fun syncIfDue(minIntervalMs: Long = 30_000) {
@@ -310,7 +310,11 @@ class SaveSync(
 
     private fun roots(): List<Pair<String, Uri>> {
         val s = store.settings.value
-        return listOfNotNull(s.savesDir?.let { "saves" to Uri.parse(it) }, s.statesDir?.let { "states" to Uri.parse(it) })
+        return listOfNotNull(
+            s.savesDir?.let { "saves" to Uri.parse(it) },
+            s.statesDir?.let { "states" to Uri.parse(it) },
+            s.systemDir?.let { "system" to Uri.parse(it) },
+        )
     }
 
     private val coreFile = File(context.filesDir, "core-folders.txt")
@@ -329,10 +333,12 @@ class SaveSync(
             fun walk(docId: String, rel: String, depth: Int) {
                 for (e in Saf.list(context.contentResolver, tree, docId)) {
                     val path = if (rel.isEmpty()) e.name else "$rel/${e.name}"
-                    if (e.isDir && depth == 0) cores += e.name
+                    if (e.isDir && depth == 0 && top != "system") cores += e.name
                     if (e.isDir) { if (depth < 6) walk(e.docId, path, depth + 1); continue }
                     val key = "$top/$path"
                     if (SyncPlanner.ignored(key)) continue
+                    // From the system folder only save data: never BIOS or firmware.
+                    if (top == "system" && !SharedSaves.isSystemSave(key)) continue
                     out += LocalSaveFile(key, e.name, tree, e.docId, e.size, e.modified)
                 }
             }
@@ -480,7 +486,8 @@ class SaveSync(
         val fetched = getManifest()
         val server = LinkedHashMap(fetched.body?.let { SyncPlanner.decodeManifest(it) }.orEmpty())
         val tops = roots().map { it.first + "/" }
-        fun ours(key: String) = tops.any { key.startsWith(it, ignoreCase = true) }
+        fun ours(key: String) = tops.any { key.startsWith(it, ignoreCase = true) } &&
+            (!key.startsWith("system/", ignoreCase = true) || SharedSaves.isSystemSave(key))
 
         _status.value = SyncStatus.Running("Reading local saves…")
         val files = listLocal()

@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.data.SharedSaves
 import io.github.audxius.pillar.data.DownloadState
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.RaAchievement
@@ -504,13 +505,13 @@ private fun GameSaves(game: Game, rommId: Int?) {
     val remote = rememberRommSaves(if (settings.rommConfigured) rommId else null, refresh).orEmpty()
     var open by remember { mutableStateOf(false) }
     LaunchedEffect(game.id, last) {
-        if (settings.savesDir == null && settings.statesDir == null) return@LaunchedEffect
+        if (settings.savesDir == null && settings.statesDir == null && settings.systemDir == null) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val stem = game.baseName.lowercase()
             // The game's own saves, plus its console's shared memory cards (PS2, Dreamcast, GC, Wii).
             val mine = graph.saveSync.listLocal().filter {
                 val n = it.name.lowercase().removeSuffix(".png")
-                n.substringBeforeLast('.') == stem || sharedSaveSystem(it) == game.system
+                SharedSaves.stems(n).any { s -> s == stem } || sharedSaveSystem(it) == game.system
             }
             files = mine.filter { !it.name.endsWith(".png", true) }.sortedByDescending { it.modified }
             states = graph.saveSync.fileStates(mine)

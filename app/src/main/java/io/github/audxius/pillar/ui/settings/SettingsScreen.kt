@@ -1012,6 +1012,7 @@ private fun SavesPage() {
     var testing by remember { mutableStateOf(false) }
     val pickSaves = rememberFolderPicker { uri -> update { it.copy(savesDir = uri.toString()) } }
     val pickStates = rememberFolderPicker { uri -> update { it.copy(statesDir = uri.toString()) } }
+    val pickSystem = rememberFolderPicker { uri -> update { it.copy(systemDir = uri.toString()) } }
 
     SettingsGroup("How it works") {
         Text(
@@ -1027,6 +1028,12 @@ private fun SavesPage() {
     SettingsGroup("Folders") {
         SettingRow("Save files", s.savesDir?.let { Saf.describeTree(Uri.parse(it)) } ?: "Not set", Icons.Rounded.Folder, onClick = pickSaves)
         SettingRow("Save states", s.statesDir?.let { Saf.describeTree(Uri.parse(it)) } ?: "Not set (optional)", Icons.Rounded.Folder, onClick = pickStates)
+        SettingRow(
+            "System files",
+            s.systemDir?.let { Saf.describeTree(Uri.parse(it)) }
+                ?: "Optional: RetroArch's system folder, where Dreamcast VMUs, PS2 memory cards and GameCube/Wii/PSP saves live. Only those are read and synced, never BIOS files.",
+            Icons.Rounded.Folder, onClick = pickSystem,
+        )
     }
     SettingsGroup("WebDAV server") {
         if (s.rommConfigured) {

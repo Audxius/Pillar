@@ -93,3 +93,46 @@ fun GameLogo(
         modifier = modifier.then(sized),
     )
 }
+
+/**
+ * Background blur, done once per image instead of every frame: shrink the art, then three
+ * box-blur passes (close to a gaussian). Cached under its own key, so a sharp copy of the same
+ * image is never shown in its place.
+ */
+class BackdropBlur(private val width: Int = 200, private val radius: Int = 3) : Transformation() {
+    override val cacheKey: String = "backdrop-blur-$width-$radius"
+
+    override suspend fun transform(input: Bitmap, size: Size): Bitmap {
+        val w = width
+        val h = (input.height * w / input.width.toFloat()).toInt().coerceAtLeast(1)
+        val small = Bitmap.createScaledBitmap(input, w, h, true).copy(Bitmap.Config.ARGB_8888, true)
+        val px = IntArray(w * h)
+        small.getPixels(px, 0, w, 0, 0, w, h)
+        val tmp = IntArray(w * h)
+        repeat(3) {
+            boxPass(px, tmp, w, h, radius, horizontal = true)
+            boxPass(tmp, px, w, h, radius, horizontal = false)
+        }
+        small.setPixels(px, 0, w, 0, 0, w, h)
+        return small
+    }
+
+    private fun boxPass(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int, horizontal: Boolean) {
+        val lines = if (horizontal) h else w
+        val len = if (horizontal) w else h
+        val div = 2 * r + 1
+        for (line in 0 until lines) {
+            fun at(i: Int) = src[if (horizontal) line * w + i.coerceIn(0, len - 1) else i.coerceIn(0, len - 1) * w + line]
+            var a = 0; var rr = 0; var g = 0; var b = 0
+            for (i in -r..r) { val c = at(i); a += c ushr 24; rr += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF }
+            for (i in 0 until len) {
+                dst[if (horizontal) line * w + i else i * w + line] = ((a / div) shl 24) or ((rr / div) shl 16) or ((g / div) shl 8) or (b / div)
+                val out = at(i - r); val inn = at(i + r + 1)
+                a += (inn ushr 24) - (out ushr 24)
+                rr += ((inn shr 16) and 0xFF) - ((out shr 16) and 0xFF)
+                g += ((inn shr 8) and 0xFF) - ((out shr 8) and 0xFF)
+                b += (inn and 0xFF) - (out and 0xFF)
+            }
+        }
+    }
+}

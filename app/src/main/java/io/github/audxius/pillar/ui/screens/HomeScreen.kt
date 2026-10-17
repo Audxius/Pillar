@@ -24,6 +24,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -117,7 +118,12 @@ private fun HomeFeed() {
         contentPadding = PaddingValues(bottom = BottomBarSpace),
     ) {
         val enabled = settings.homeWidgets.filter { it.enabled && it.type !in RemovedWidgets }.map { it.type }
-        item { Spacer(Modifier.statusBarsPadding()) }
+        item {
+            // Search the whole library (and RomM) without leaving home.
+            Box(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 6.dp, end = 14.dp), contentAlignment = Alignment.CenterEnd) {
+                RoundIcon(Icons.Rounded.Search, "Search") { nav.navigate(Routes.SEARCH) }
+            }
+        }
         if (games.isEmpty()) item("empty") { GapIfNotEmpty(12.dp) { EmptyLibraryCard() } }
         for ((index, type) in enabled.withIndex()) {
             item(type.name) {

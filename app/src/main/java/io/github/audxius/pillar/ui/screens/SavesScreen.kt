@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.audxius.pillar.data.Game
+import io.github.audxius.pillar.data.SharedSaves
 import io.github.audxius.pillar.data.RommSave
 import io.github.audxius.pillar.data.LibraryRepository
 import io.github.audxius.pillar.data.ThumbMatch
@@ -105,7 +106,8 @@ private class SaveGameFinder(games: List<Game>) {
 
     fun find(f: LocalSaveFile): Game {
         val stem = saveStem(f.name)
-        byStem[stem.lowercase()]?.firstOrNull()?.let { return it }
+        // "Game (USA).A1.bin" and similar extra suffixes still belong to "Game (USA)".
+        SharedSaves.stems(f.name).firstNotNullOfOrNull { byStem[it.lowercase()]?.firstOrNull() }?.let { return it }
         val key = ThumbMatch.key("$stem.x")
         if (key.isNotEmpty()) byKey[key]?.let { return it }
         // Keys look like "saves/<core folder>/<name>.srm".
@@ -121,22 +123,8 @@ private class SaveGameFinder(games: List<Game>) {
     }
 }
 
-/**
- * The system a shared save file belongs to: memory cards and system storage that consoles like
- * the PS2, Dreamcast, GameCube and Wii keep for all their games, rather than one save per game.
- */
-internal fun sharedSaveSystem(f: LocalSaveFile): String? {
-    val name = f.name.lowercase()
-    val path = f.key.lowercase()
-    val core = f.key.split('/').let { if (it.size >= 3) it[1].lowercase() else "" }
-    return when {
-        name.endsWith(".ps2") || name.startsWith("mcd00") || "pcsx2" in core || "lrps2" in core || "aethersx2" in core -> "ps2"
-        name.startsWith("vmu_save") || name.endsWith(".vmu") || ("flycast" in core && name.endsWith(".bin")) -> "dreamcast"
-        "dolphin" in core && ("/wii/" in path || "nand" in path) -> "wii"
-        name.endsWith(".gci") || name.endsWith(".raw") && "dolphin" in core || "/gc/" in path -> "gc"
-        else -> null
-    }
-}
+/** The console a shared save file (memory card, VMU, system save folder) belongs to, if it is one. */
+internal fun sharedSaveSystem(f: LocalSaveFile): String? = SharedSaves.systemOf(f.key)
 
 /** The system a RetroArch core's save folder most likely belongs to. */
 private fun coreSystem(core: String): String? {
@@ -190,9 +178,9 @@ fun SavesScreen() {
     var refresh by remember { mutableStateOf(0) }
     var deleting by remember { mutableStateOf<LocalSaveFile?>(null) }
     var showBackups by remember { mutableStateOf(false) }
-    val hasFolders = settings.savesDir != null || settings.statesDir != null
+    val hasFolders = settings.savesDir != null || settings.statesDir != null || settings.systemDir != null
 
-    LaunchedEffect(refresh, last, settings.savesDir, settings.statesDir) {
+    LaunchedEffect(refresh, last, settings.savesDir, settings.statesDir, settings.systemDir) {
         if (!hasFolders) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             val list = graph.saveSync.listLocal()
@@ -202,8 +190,8 @@ fun SavesScreen() {
     }
 
     val finder = remember(games) { SaveGameFinder(games) }
-    val grouped = remember(files) {
-        files.orEmpty().groupBy { f -> sharedSaveSystem(f)?.let { "system:$it" } ?: saveStem(f.name).lowercase() }.entries
+    val grouped = remember(files, finder) {
+        files.orEmpty().groupBy { f -> sharedSaveSystem(f)?.let { "system:$it" } ?: finder.find(f).id }.entries
             .sortedByDescending { e -> e.value.maxOf { it.modified } }
     }
 
@@ -525,6 +513,7 @@ private fun saveLabel(name: String): Pair<String, Boolean> {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when {
         name.lowercase().endsWith(".state.auto") -> "Auto state" to true
+        Regex("\\.([ab][1-4])\\.bin$", RegexOption.IGNORE_CASE).find(name) != null -> "VMU ${Regex("\\.([ab][1-4])\\.bin$", RegexOption.IGNORE_CASE).find(name)!!.groupValues[1].uppercase()}" to false
         ext == "state" -> "State · slot 0" to true
         ext.startsWith("state") && ext.drop(5).all(Char::isDigit) -> "State · slot ${ext.drop(5)}" to true
         ext == "srm" || ext == "sav" -> "Save" to false

@@ -44,7 +44,8 @@ Android 8.0 or newer.
 
 - **Built for portrait.** Home is every game, most recently played first, as a snapping cover
   carousel (or a vertical list, if you prefer) under the focused game's big logo, with its system, when you last played it and
-  whether it has achievements. Tap a cover to open its page; Play is right there. Cover tiles
+  whether it has achievements. Tap a cover to open its page; Play is right there, and search is
+  one tap away. Cover tiles
   stay uniform: art that doesn't match the tile is shown whole in a frame instead of cropped.
 - **Game pages.** Cover, logo, the emulator it will use right above Play, save files, RomM info
   and every achievement (still to unlock first). Favorite, cover, rename and hide live in the ⋮ menu.
@@ -81,7 +82,8 @@ Android 8.0 or newer.
   own manifest format and rules, every time you open Pillar. Sync is non-destructive: it never
   deletes anything on the server and backs up any save before replacing it. When a save changed
   on both sides, you see how old each copy is and pick which to keep. Shared memory cards (PS2,
-  Dreamcast, GameCube, Wii) are shown with every game of that console. Your RomM save slots show on
+  Dreamcast, GameCube, Wii, PSP) are shown with every game of that console, including the ones
+  RetroArch keeps in its system folder (Pillar only ever reads save data from there, never BIOS). Your RomM save slots show on
   each game's page: play from any of them, or make one your main save. A small indicator shows while
   saves sync, optionally even over a game you've gone back into.
 - **RomM downloads.** Games land in the right system folder; multi-file games are extracted for

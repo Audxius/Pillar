@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.EmojiEvents
@@ -180,7 +181,8 @@ fun HomeCarouselScreen() {
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
         val itemHeight = (maxHeight * 0.3f).coerceIn(130.dp, 270.dp)
         Column(Modifier.fillMaxSize()) {
-            if (compact) Spacer(Modifier.height(12.dp))
+            // The grid's top row would sit under the search button.
+            if (compact) Spacer(Modifier.height(if (browse == io.github.audxius.pillar.data.HomeBrowse.GRID) 58.dp else 12.dp))
             // The logo gets all the room the carousel and buttons don't need; tapping it opens the game.
             if (!compact) Box(
                 Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)
@@ -237,6 +239,8 @@ fun HomeCarouselScreen() {
             // Room for the floating dock.
             Spacer(Modifier.navigationBarsPadding().height(96.dp))
         }
+        // Search the whole library (and RomM) without leaving home.
+        RoundIcon(Icons.Rounded.Search, "Search", Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 14.dp)) { nav.navigate(Routes.SEARCH) }
     }
     quick?.let { g -> GameQuickSheet(g, "home", onDismiss = { quick = null }) }
 }

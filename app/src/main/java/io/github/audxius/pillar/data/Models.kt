@@ -164,6 +164,8 @@ data class AppSettings(
     val webdavPassword: String = "",
     val savesDir: String? = null,
     val statesDir: String? = null,
+    /** RetroArch's system folder, for consoles' shared save storage (only save data is read from it). */
+    val systemDir: String? = null,
     val syncOnOpen: Boolean = true,
     /** Show a small sync indicator over games while saves sync in the background. */
     val syncOverlay: Boolean = false,

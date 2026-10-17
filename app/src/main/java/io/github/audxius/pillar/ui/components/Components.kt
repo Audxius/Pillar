@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.request.transformations
 import io.github.audxius.pillar.data.BackgroundStyle
 import io.github.audxius.pillar.data.CoverShape
 import io.github.audxius.pillar.data.Game
@@ -282,6 +283,8 @@ fun MultiImage(
     onAspect: ((Float) -> Unit)? = null,
     /** Decode at most this many pixels on the long side (for backdrops that get blurred anyway). */
     decodeSize: Int? = null,
+    /** Soft background blur, baked into the image once (see [BackdropBlur]). */
+    blurred: Boolean = false,
     fallback: @Composable BoxScope.() -> Unit,
 ) {
     var index by remember(sources) { mutableIntStateOf(0) }
@@ -304,11 +307,13 @@ fun MultiImage(
                 Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.35f)))
             }
             AsyncImage(
-                model = remember(src, decodeSize) {
+                model = remember(src, decodeSize, blurred) {
                     ImageRequest.Builder(context).data(src).apply {
                         decodeSize?.let { size(it) }
+                        if (blurred) transformations(BackdropBlur())
                     }.build()
                 },
+                filterQuality = if (blurred) androidx.compose.ui.graphics.FilterQuality.High else androidx.compose.ui.graphics.drawscope.DrawScope.DefaultFilterQuality,
                 contentDescription = null,
                 contentScale = if (fit) ContentScale.Fit else contentScale,
                 alignment = alignment,
@@ -735,12 +740,12 @@ private fun ArtBackdrop(sources: List<String>?, dark: Boolean, bg: Color, streng
     ) { current ->
         if (current == null) return@Crossfade
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = strength }) {
-            // No live blur: a 48-pixel decode stretched to the screen is already soft, and costs
-            // nothing per frame (a full-screen blur had to be redone by the GPU constantly).
+            // Blurred once when the art loads (no per-frame GPU blur), then scaled up smoothly.
             MultiImage(
                 current,
                 Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f },
-                decodeSize = 48,
+                decodeSize = 400,
+                blurred = true,
             ) {}
             Box(
                 Modifier.fillMaxSize().background(
